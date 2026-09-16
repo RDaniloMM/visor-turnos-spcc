@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+ClientApp/node_modules/
+artifacts/
+TestResults/
+*.user
+appsettings.Production.json

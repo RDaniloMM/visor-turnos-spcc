@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="visor_turnos.csproj" />
+  <Project Path="tests/VisorTurnos.UnitTests/VisorTurnos.UnitTests.csproj" />
+</Solution>
