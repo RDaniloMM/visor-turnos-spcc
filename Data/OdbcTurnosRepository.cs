@@ -30,13 +30,14 @@ public sealed class OdbcTurnosRepository(
             m.mednam,
             co.descon
         FROM dbo.citas AS c
-        LEFT JOIN dbo.medicos AS m
+        INNER JOIN dbo.medicos AS m
             ON m.medcod = c.medcod
         LEFT JOIN dbo.consultorios AS co
-            ON co.codcon = c.codcon
+            ON co.codcon = m.codcon
         WHERE c.siscod = ?
           AND c.citdat >= ?
           AND c.citdat < ?
+          AND c.statte <> ?
         ORDER BY c.citdat, c.invnum;
         """;
 
@@ -59,6 +60,7 @@ public sealed class OdbcTurnosRepository(
         AddParameter(command, OdbcType.Int, siteCode);
         AddParameter(command, OdbcType.DateTime, dayStart);
         AddParameter(command, OdbcType.DateTime, nextDayStart);
+        AddParameter(command, OdbcType.VarChar, GetClosedStatusCode(), 2);
 
         var results = new List<TurnoRaw>();
         await using var reader = await command.ExecuteReaderAsync(
@@ -107,4 +109,12 @@ public sealed class OdbcTurnosRepository(
 
     private static string? ReadString(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal).Trim();
+
+    private string GetClosedStatusCode()
+    {
+        var closedStatusCode = businessRulesOptions.Value.ClosedStatusCodes
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return closedStatusCode?.Trim()
+            ?? throw new InvalidOperationException("No se configuro un estado cerrado para la consulta ODBC.");
+    }
 }

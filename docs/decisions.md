@@ -6,9 +6,10 @@ Ultima revision tecnica: 2026-09-16.
 
 | Fecha | Decision | Responsable | Estado |
 | --- | --- | --- | --- |
+| 2026-09-16 | Se autoriza que el visor público anuncie por voz el nombre visible del paciente y el consultorio, una sola vez por versión de llamado durante la sesión. | Responsable del proyecto | Aplicada |
 | 2026-09-16 | Razor Pages + TypeScript + SignalR; sin Blazor. | Lineamiento del proyecto | Aplicada |
-| 2026-09-16 | La fuente queda `Disabled` por defecto y `Demo` solo en Development. | Control preventivo tecnico | Aplicada |
-| 2026-09-16 | El repositorio ODBC no selecciona `pacnam` ni `pachis`. | Privacidad por diseño | Aplicada |
+| 2026-09-16 | La fuente queda `Disabled` por defecto y `Demo` solo en Development. | Control preventivo tecnico | Reemplazada por la activacion ODBC autorizada para Cuajone |
+| 2026-09-16 | El repositorio ODBC no selecciona `pacnam` ni `pachis`. | Privacidad por diseño | Reemplazada: `pacnam` autorizado como identificador publico; `pachis` sigue prohibido |
 | 2026-09-16 | Sin identificador publico aprobado, una fila real no se publica. | Privacidad por diseño | Aplicada |
 | 2026-09-16 | En la cola de citas, `citas.obscit = EMA` identifica examen medico y recibe `PriorityTier=1`. La observacion cruda no se publica ni registra. | Responsable del proyecto, solicitud directa | Aplicada |
 | 2026-09-16 | La pantalla tiene un panel rotativo agrupado por consultorio y medico, y un panel general fijo ordenado por prioridad que muestra ambos datos de destino. | Responsable del proyecto, solicitud directa | Aplicada |

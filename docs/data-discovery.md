@@ -27,8 +27,6 @@ WHERE TABLE_NAME IN ('citas', 'consultorios', 'medicos', 'tipo_citado', 'tipo_pa
 ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION;
 
 SELECT tcicod, tcides FROM dbo.tipo_citado ORDER BY tcicod;
-SELECT tppcod, tppdes FROM dbo.tipo_paciente ORDER BY tppcod;
-
 SELECT statte, COUNT_BIG(*) AS cantidad
 FROM dbo.citas
 WHERE siscod = ? AND citdat >= ? AND citdat < ?
@@ -65,7 +63,7 @@ GROUP BY statte,
 - `Site:Code` validado y mayor que cero.
 - `BusinessRules:ClosedStatusCodes` aprobado.
 - `PriorityRules:MedicalExamObservationCode` se mantiene en `EMA`; la consulta solo materializa un booleano derivado y nunca entrega `obscit` al dominio publico.
-- `BusinessRules:PublicIdentifierMode` aprobado; `Invnum` solo si el negocio confirma unicidad diaria y que el paciente conoce el valor.
+- `BusinessRules:PublicIdentifierMode=PatientName` esta aprobado para Cuajone; `Invnum` permanece deshabilitado porque no es un codigo conocido por el paciente.
 - DSN de 64 bits y cadena con autenticacion integrada, sin secretos.
 - Identidad efectiva de IIS con permisos de lectura limitados.
 - Prioridades y tolerancias pueden permanecer sin configurar; en ese caso la aplicacion usa orden cronologico estable y no inventa preferencias.

@@ -32,6 +32,6 @@ npm run typecheck
 npm run build
 ```
 
-## Activacion futura de ODBC
+## Operacion ODBC
 
-No activar ODBC hasta completar [docs/data-discovery.md](docs/data-discovery.md) y registrar las aprobaciones en [docs/decisions.md](docs/decisions.md). La cadena debe usar el DSN y autenticacion integrada autorizados; nunca debe incluir usuario o contrasena.
+La activacion de Cuajone fue validada con [docs/data-discovery.md](docs/data-discovery.md) y registrada en [docs/decisions.md](docs/decisions.md). La cadena usa el DSN y autenticacion integrada autorizados; nunca debe incluir usuario o contrasena.

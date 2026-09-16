@@ -208,6 +208,43 @@ function renderGeneral(items) {
     generalList.replaceChildren(fragment);
     generalEmpty.hidden = upcoming.length > 0;
 }
+function renderFreshness(generatedAt) {
+    const generated = new Date(generatedAt);
+    freshness.textContent = Number.isNaN(generated.getTime())
+        ? "Última actualización: --"
+        : `Última actualización: ${shortTimeFormatter.format(generated)}`;
+}
+function speakCallout(item) {
+    if (!("speechSynthesis" in window) || !item.publicId || !item.consultorio) {
+        return;
+    }
+    window.speechSynthesis.cancel();
+    const announcement = new SpeechSynthesisUtterance(`Llamando a ${item.publicId}. Diríjase al consultorio ${item.consultorio}.`);
+    announcement.lang = "es-PE";
+    announcement.rate = 0.9;
+    announcement.pitch = 1;
+    announcement.volume = 1;
+    window.speechSynthesis.speak(announcement);
+}
+function hasSameVisibleContent(current, next) {
+    if (current.siteDisplayName !== next.siteDisplayName || current.status !== next.status || current.items.length !== next.items.length) {
+        return false;
+    }
+    return current.items.every((item, index) => {
+        const candidate = next.items[index];
+        return candidate !== undefined &&
+            item.publicId === candidate.publicId &&
+            item.consultorio === candidate.consultorio &&
+            item.medico === candidate.medico &&
+            item.estado === candidate.estado &&
+            item.priorityTier === candidate.priorityTier &&
+            item.isPreferential === candidate.isPreferential &&
+            item.isMedicalExam === candidate.isMedicalExam &&
+            item.scheduledAt === candidate.scheduledAt &&
+            item.arrivedAt === candidate.arrivedAt &&
+            item.shouldAnnounce === candidate.shouldAnnounce;
+    });
+}
 function renderSnapshot(snapshot) {
     siteName.textContent = snapshot.siteDisplayName;
     const called = snapshot.items.find(item => item.estado === "en-atencion") ?? null;
@@ -231,35 +268,34 @@ function renderSnapshot(snapshot) {
     }
     renderGeneral(snapshot.items);
     restartAreaRotation(snapshot.items);
-    const generated = new Date(snapshot.generatedAt);
-    freshness.textContent = Number.isNaN(generated.getTime())
-        ? "Última actualización: --"
-        : `Última actualización: ${shortTimeFormatter.format(generated)}`;
+    renderFreshness(snapshot.generatedAt);
     const announcedVersion = Number.parseInt(sessionStorage.getItem(announcementStorageKey) ?? "-1", 10);
-    if (snapshot.items.some(item => item.shouldAnnounce) && announcedVersion !== snapshot.version) {
+    const announcedTurn = snapshot.items.find(item => item.shouldAnnounce && item.estado === "en-atencion");
+    if (announcedTurn && announcedVersion !== snapshot.version) {
         sessionStorage.setItem(announcementStorageKey, String(snapshot.version));
         callout.classList.remove("callout--announce");
         requestAnimationFrame(() => callout.classList.add("callout--announce"));
+        speakCallout(announcedTurn);
     }
 }
 function applySnapshot(snapshot, persist = true) {
     if (currentSnapshot && snapshot.version < currentSnapshot.version)
         return;
     if (currentSnapshot && snapshot.version === currentSnapshot.version) {
-        if (snapshot.generatedAt !== currentSnapshot.generatedAt) {
-            currentSnapshot = snapshot;
+        const contentChanged = !hasSameVisibleContent(currentSnapshot, snapshot);
+        currentSnapshot = snapshot;
+        if (contentChanged) {
             renderSnapshot(snapshot);
-            updateHealthIndicator();
-            if (persist) {
-                try {
-                    localStorage.setItem(snapshotStorageKey, JSON.stringify(snapshot));
-                }
-                catch { }
-            }
-            return;
         }
-        currentSnapshot = { ...currentSnapshot, generatedAt: snapshot.generatedAt, status: snapshot.status };
+        else
+            renderFreshness(snapshot.generatedAt);
         updateHealthIndicator();
+        if (persist) {
+            try {
+                localStorage.setItem(snapshotStorageKey, JSON.stringify(snapshot));
+            }
+            catch { }
+        }
         return;
     }
     currentSnapshot = snapshot;
