@@ -63,9 +63,25 @@ public sealed class TurnosSnapshotBuilderTests
         var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
 
         Assert.Equal("EMA", result.Items[0].PublicId);
-        Assert.Equal("Medico 2", result.Items[0].Medico);
+        Assert.Equal("Dr. Medico 2", result.Items[0].Medico);
         Assert.Equal(1, result.Items[0].PriorityTier);
         Assert.True(result.Items[0].IsMedicalExam);
+    }
+
+    [Fact]
+    public void DoctorNameUsesPrefixWithoutDuplicatingExistingPrefix()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var at = new DateTime(2026, 9, 16, 9, 0, 0);
+        TurnoRaw[] raw =
+        [
+            new(1, "A", "C1", "Medico Uno", at, at, "N", null, null, null, false),
+            new(2, "B", "C2", "Dr. Medico Dos", at, at, "N", null, null, null, false)
+        ];
+
+        var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
+
+        Assert.Equal(["Dr. Medico Uno", "Dr. Medico Dos"], result.Items.Select(item => item.Medico));
     }
 
     [Fact]
@@ -88,9 +104,12 @@ public sealed class TurnosSnapshotBuilderTests
         var status = new TurnoStatusPolicy(new PrefacturaPolicy(ruleOptions), ruleOptions);
         return new TurnosSnapshotBuilder(
             status,
+            new PrefacturaPolicy(ruleOptions),
             new PriorityPolicy(
                 ruleOptions,
                 Microsoft.Extensions.Options.Options.Create(new PriorityOptions())),
+            new CalledTurnRotationPolicy(
+                Microsoft.Extensions.Options.Options.Create(new QueueOptions { CalledDisplaySeconds = 60 })),
             Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }));
     }
 }

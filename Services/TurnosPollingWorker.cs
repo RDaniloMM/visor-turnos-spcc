@@ -16,7 +16,6 @@ public sealed class TurnosPollingWorker(
     IHubContext<TurnosHub> hubContext,
     IOptions<SiteOptions> siteOptions,
     IOptions<QueueOptions> queueOptions,
-    IOptions<DataSourceOptions> dataSourceOptions,
     TimeProvider timeProvider,
     ILogger<TurnosPollingWorker> logger) : BackgroundService
 {
@@ -25,13 +24,6 @@ public sealed class TurnosPollingWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (dataSourceOptions.Value.Mode == TurnosDataSourceMode.Disabled)
-        {
-            logger.LogWarning("La fuente de turnos esta deshabilitada. No se realizaran consultas.");
-            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
-            return;
-        }
-
         var consecutiveFailures = 0;
         while (!stoppingToken.IsCancellationRequested)
         {

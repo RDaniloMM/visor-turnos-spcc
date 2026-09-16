@@ -6,7 +6,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#082e4c" />
+    <meta name="theme-color" content="#d22730" />
     <meta name="robots" content="noindex,nofollow" />
     <title>Turnos de atencion</title>
     <link rel="stylesheet" href="~/css/tv.css" asp-append-version="true" />
@@ -18,7 +18,7 @@
         <header class="topbar">
             <div class="brand" aria-label="Centro medico">
                 <span class="brand-mark" aria-hidden="true">
-                    <svg viewBox="0 0 48 48"><path d="M24 5v38M5 24h38" /></svg>
+                    <img src="~/img/southern-peru-logo.png" asp-append-version="true" alt="" />
                 </span>
                 <div>
                     <p class="eyebrow">Bienvenidos</p>
@@ -31,16 +31,6 @@
             </div>
         </header>
         <main>
-            <section class="section-heading" aria-labelledby="screen-title">
-                <div>
-                    <p class="eyebrow">Sala de espera</p>
-                    <h2 id="screen-title">TURNOS DE ATENCION</h2>
-                </div>
-                <div id="connection-status" class="connection connection--loading" role="status" aria-live="polite">
-                    <span class="connection-dot" aria-hidden="true"></span>
-                    <span id="connection-text">Conectando</span>
-                </div>
-            </section>
             <section id="callout" class="callout" aria-live="assertive">
                 <div class="callout-copy">
                     <span id="called-label" class="callout-label">Llamando ahora</span>
@@ -64,7 +54,8 @@
                     </div>
                     <div class="area-context">
                         <strong id="area-room">Consultorio por confirmar</strong>
-                        <span id="area-doctor">Médico por confirmar</span>
+                        <span id="area-doctor">Dr. por confirmar</span>
+                        <span id="area-status" class="area-status area-status--available">SIN DATOS</span>
                     </div>
                     <div class="area-table-head" aria-hidden="true">
                         <span>Paciente</span><span>Estado</span>
@@ -82,7 +73,6 @@
                             <p class="board-kicker">Orden de atención</p>
                             <h3 id="general-title">Próximos turnos</h3>
                         </div>
-                        <p><span class="priority-key">EMA</span> Prioridad 1</p>
                     </div>
                     <div class="general-table-head" aria-hidden="true">
                         <span>Paciente</span><span>Médico y consultorio</span><span>Estado</span>

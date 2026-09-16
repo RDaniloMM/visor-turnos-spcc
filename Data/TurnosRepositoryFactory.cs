@@ -7,14 +7,13 @@ public static class TurnosRepositoryFactory
 {
     public static ITurnosRepository Create(IServiceProvider services, IConfiguration configuration)
     {
-        var mode = services.GetRequiredService<IOptions<DataSourceOptions>>().Value.Mode;
-        return mode switch
+        var source = services.GetRequiredService<IOptions<DataSourceOptions>>().Value;
+        var connectionString = configuration.GetConnectionString("LolcliOdbc") ?? string.Empty;
+        if (!connectionString.Contains($"DSN={source.OdbcDsn}", StringComparison.OrdinalIgnoreCase))
         {
-            TurnosDataSourceMode.Demo => ActivatorUtilities.CreateInstance<DemoTurnosRepository>(services),
-            TurnosDataSourceMode.Odbc => ActivatorUtilities.CreateInstance<OdbcTurnosRepository>(
-                services,
-                configuration.GetConnectionString("LolcliOdbc") ?? string.Empty),
-            _ => new DisabledTurnosRepository()
-        };
+            throw new InvalidOperationException("La conexion configurada debe usar exclusivamente el DSN ODBC autorizado.");
+        }
+
+        return ActivatorUtilities.CreateInstance<OdbcTurnosRepository>(services, connectionString);
     }
 }

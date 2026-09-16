@@ -37,8 +37,9 @@ public sealed class OdbcTurnosRepository(
         WHERE c.siscod = ?
           AND c.citdat >= ?
           AND c.citdat < ?
-          AND c.statte <> ?
-        ORDER BY c.citdat, c.invnum;
+        ORDER BY CASE WHEN c.statte = ? THEN 1 ELSE 0 END,
+                 c.citdat,
+                 c.invnum;
         """;
 
     public async Task<IReadOnlyList<TurnoRaw>> GetForDayAsync(

@@ -3,7 +3,6 @@ namespace VisorTurnos.Options;
 public enum PublicIdentifierMode
 {
     Unconfigured,
-    Demo,
     Invnum,
     PatientName
 }

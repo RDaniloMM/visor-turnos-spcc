@@ -10,4 +10,5 @@ public sealed record TurnoPublicoDto(
     bool IsMedicalExam,
     DateTimeOffset? ScheduledAt,
     DateTimeOffset? ArrivedAt,
-    bool ShouldAnnounce);
+    bool ShouldAnnounce,
+    bool IsActiveCall = false);

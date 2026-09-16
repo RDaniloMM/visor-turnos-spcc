@@ -44,6 +44,7 @@ builder.Services.AddSingleton<TurnosSnapshotStore>();
 builder.Services.AddSingleton<PrefacturaPolicy>();
 builder.Services.AddSingleton<TurnoStatusPolicy>();
 builder.Services.AddSingleton<PriorityPolicy>();
+builder.Services.AddSingleton<CalledTurnRotationPolicy>();
 builder.Services.AddSingleton<TurnosSnapshotBuilder>();
 builder.Services.AddSingleton<TurnosChangeDetector>();
 builder.Services.AddSingleton<ITurnosRepository>(services =>

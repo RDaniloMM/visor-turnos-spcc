@@ -6,9 +6,10 @@ Ultima revision tecnica: 2026-09-16.
 
 | Fecha | Decision | Responsable | Estado |
 | --- | --- | --- | --- |
-| 2026-09-16 | Se autoriza que el visor público anuncie por voz el nombre visible del paciente y el consultorio, una sola vez por versión de llamado durante la sesión. | Responsable del proyecto | Aplicada |
+| 2026-09-16 | Cada llamado anuncia al paciente inicialmente y repite el aviso a los 30 segundos. A los 60 segundos, si no existe prefactura válida, desaparece del llamado, se reubica al final de la cola de su consultorio/médico y puede volver a ser llamado hasta cuatro veces. Para llamar al siguiente tras una atención, el visor exige que el turno previo aparezca con `statte=S` y prefactura válida. Después del cuarto intento el visor no escribe ni elimina la cita; esa acción corresponde a LOLCLI. | Responsable del proyecto, solicitud directa | Aplicada |
+| 2026-09-16 | Se autoriza que el visor público anuncie por voz el nombre visible del paciente y el consultorio al inicio de cada llamado y una vez más a los 30 segundos. | Responsable del proyecto | Aplicada |
 | 2026-09-16 | Razor Pages + TypeScript + SignalR; sin Blazor. | Lineamiento del proyecto | Aplicada |
-| 2026-09-16 | La fuente queda `Disabled` por defecto y `Demo` solo en Development. | Control preventivo tecnico | Reemplazada por la activacion ODBC autorizada para Cuajone |
+| 2026-09-16 | La aplicacion usa exclusivamente el DSN ODBC `LOLCLI9000`, independientemente del perfil de inicio. Cuando ODBC no esta disponible, conserva el ultimo snapshot real o informa indisponibilidad; no existen datos demo como alternativa. | Responsable del proyecto, solicitud directa | Aplicada |
 | 2026-09-16 | El repositorio ODBC no selecciona `pacnam` ni `pachis`. | Privacidad por diseño | Reemplazada: `pacnam` autorizado como identificador publico; `pachis` sigue prohibido |
 | 2026-09-16 | Sin identificador publico aprobado, una fila real no se publica. | Privacidad por diseño | Aplicada |
 | 2026-09-16 | En la cola de citas, `citas.obscit = EMA` identifica examen medico y recibe `PriorityTier=1`. La observacion cruda no se publica ni registra. | Responsable del proyecto, solicitud directa | Aplicada |

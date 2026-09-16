@@ -6,13 +6,13 @@ namespace VisorTurnos.UnitTests;
 public sealed class TurnosChangeDetectorTests
 {
     [Fact]
-    public void FingerprintIgnoresVersionTimestampAndAnnouncementReplayFlag()
+    public void FingerprintChangesWhenAnAnnouncementMustBeDelivered()
     {
         var item = new TurnoPublicoDto("T1", "C1", "Medico", "en-atencion", 100, false, false, null, null, true);
         var first = new TurnosSnapshotDto(1, DateTimeOffset.UnixEpoch, "Site", "live", [item]);
         var second = new TurnosSnapshotDto(9, DateTimeOffset.Now, "Site", "live", [item with { ShouldAnnounce = false }]);
 
-        Assert.False(new TurnosChangeDetector().HasVisibleChange(first, second));
+        Assert.True(new TurnosChangeDetector().HasVisibleChange(first, second));
     }
 
     [Fact]

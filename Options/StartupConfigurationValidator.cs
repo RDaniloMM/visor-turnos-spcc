@@ -6,8 +6,7 @@ public sealed class StartupConfigurationValidator(
     IOptions<SiteOptions> siteOptions,
     IOptions<DataSourceOptions> dataSourceOptions,
     IOptions<BusinessRulesOptions> businessRulesOptions,
-    IConfiguration configuration,
-    IHostEnvironment environment)
+    IConfiguration configuration)
 {
     public void Validate()
     {
@@ -27,19 +26,9 @@ public sealed class StartupConfigurationValidator(
                 [$"Site:TimeZone no existe en este servidor: {exception.Message}"]);
         }
 
-        if (source.Mode == TurnosDataSourceMode.Demo && !environment.IsDevelopment())
+        if (site.Code <= 0)
         {
-            throw Invalid("DataSource:Mode=Demo solo se permite en Development.");
-        }
-
-        if (source.Mode != TurnosDataSourceMode.Demo && site.Code <= 0)
-        {
-            throw Invalid("Site:Code debe ser un codigo siscod validado mayor que cero fuera del modo Demo.");
-        }
-
-        if (source.Mode != TurnosDataSourceMode.Odbc)
-        {
-            return;
+            throw Invalid("Site:Code debe ser un codigo siscod validado mayor que cero.");
         }
 
         var failures = new List<string>();
@@ -53,7 +42,7 @@ public sealed class StartupConfigurationValidator(
             failures.Add("BusinessRules:ZeroPrefacturaMeansAbsent debe validarse antes de activar ODBC.");
         }
 
-        if (rules.PublicIdentifierMode is PublicIdentifierMode.Unconfigured or PublicIdentifierMode.Demo)
+        if (rules.PublicIdentifierMode == PublicIdentifierMode.Unconfigured)
         {
             failures.Add("BusinessRules:PublicIdentifierMode debe ser una fuente aprobada antes de activar ODBC.");
         }
@@ -61,6 +50,11 @@ public sealed class StartupConfigurationValidator(
         if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("LolcliOdbc")))
         {
             failures.Add("ConnectionStrings:LolcliOdbc es obligatorio en modo ODBC.");
+        }
+
+        if (!string.Equals(source.OdbcDsn, "LOLCLI9000", StringComparison.OrdinalIgnoreCase))
+        {
+            failures.Add("DataSource:OdbcDsn debe ser LOLCLI9000.");
         }
 
         if (failures.Count > 0)

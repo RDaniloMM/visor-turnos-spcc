@@ -7,8 +7,7 @@ Aplicacion ASP.NET Core Razor Pages para una pantalla de sala de espera. El serv
 - La interfaz 16:9, la API, SignalR, el almacenamiento de snapshots y el worker estan implementados.
 - La pantalla separa una vista rotativa por consultorio y medico de una vista general fija; esta ultima muestra el medico y el consultorio de destino.
 - Las citas con `obscit=EMA` se clasifican como examen medico, reciben prioridad 1 y se distinguen visualmente sin exponer la observacion original.
-- `Development` usa datos marcados como `DEMO` y **no abre conexiones de base de datos**.
-- La configuracion base apunta al DSN ODBC `LOLCLI9000`, con sede fija `siscod=1` (Cuajone), mientras `Development` usa datos `Demo` para no consultar la base durante el desarrollo local.
+- Toda ejecucion usa exclusivamente el DSN ODBC `LOLCLI9000`, con sede fija `siscod=1` (Cuajone). Si la fuente no esta disponible, la pantalla conserva el ultimo snapshot real o indica que no puede actualizarse; nunca publica datos ficticios.
 - El adaptador ODBC usa solo lectura, rango diario indexable, limite de 100 filas, timeout de comando de 5 segundos y un unico worker de sondeo cada 3 segundos.
 - Por aprobacion expresa del responsable, el modo productivo usa `pacnam` como identificador visible. No se muestran historias clinicas, prefacturas ni observaciones crudas.
 

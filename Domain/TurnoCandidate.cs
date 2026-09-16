@@ -11,4 +11,7 @@ public sealed record TurnoCandidate(
     bool IsMedicalExam,
     DateTimeOffset ScheduledAt,
     DateTimeOffset? ArrivedAt,
-    DateTimeOffset EligibilityTime);
+    DateTimeOffset EligibilityTime)
+{
+    public string AreaKey => $"{Consultorio}\u001f{Medico}";
+}

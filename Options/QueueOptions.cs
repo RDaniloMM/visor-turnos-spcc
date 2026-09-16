@@ -14,6 +14,7 @@ public sealed class QueueOptions
     [Range(3, 60)] public int AreaRotationSeconds { get; init; } = 8;
     [Range(0, 240)] public int? EarlyArrivalMinutes { get; init; }
     [Range(0, 240)] public int? LateToleranceMinutes { get; init; }
-    [Range(0, 300)] public int CalledDisplaySeconds { get; init; } = 20;
+    [Range(1, 299)] public int RepeatCallAnnouncementSeconds { get; init; } = 30;
+    [Range(1, 300)] public int CalledDisplaySeconds { get; init; } = 60;
     [Range(0, 300)] public int ClosedRetentionSeconds { get; init; }
 }

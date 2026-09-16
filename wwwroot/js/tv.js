@@ -8,8 +8,8 @@ const required = (id) => {
 const siteName = required("site-name");
 const currentDate = required("current-date");
 const currentTime = required("current-time");
-const connectionStatus = required("connection-status");
-const connectionText = required("connection-text");
+const connectionStatus = document.getElementById("connection-status");
+const connectionText = document.getElementById("connection-text");
 const callout = required("callout");
 const calledLabel = required("called-label");
 const calledTurn = required("called-turn");
@@ -18,6 +18,7 @@ const calledDoctor = required("called-doctor");
 const calledMessage = required("called-message");
 const areaRoom = required("area-room");
 const areaDoctor = required("area-doctor");
+const areaStatus = required("area-status");
 const areaCounter = required("area-counter");
 const areaList = required("area-list");
 const areaEmpty = required("area-empty");
@@ -32,7 +33,7 @@ const staleAfterSeconds = readPositiveInteger(document.body.dataset.staleAfterSe
 const maxVisibleRows = readPositiveInteger(document.body.dataset.maxVisibleRows, 5);
 const areaRotationSeconds = readPositiveInteger(document.body.dataset.areaRotationSeconds, 8);
 const snapshotStorageKey = "visor-turnos:v2:last-public-snapshot";
-const announcementStorageKey = "visor-turnos:last-announced-version";
+const announcementStorageKey = "visor-turnos:v2:last-announced-version";
 let currentSnapshot = null;
 let hubConnected = false;
 let areaSlides = [];
@@ -66,6 +67,8 @@ function isSnapshot(value) {
         (item.status === "live" || item.status === "stale" || item.status === "unavailable");
 }
 function setConnectionState(kind, text) {
+    if (!connectionStatus || !connectionText)
+        return;
     connectionStatus.className = `connection connection--${kind}`;
     connectionText.textContent = text;
 }
@@ -96,6 +99,10 @@ function createPriorityTag(compact = false) {
     priority.textContent = compact ? "EMA" : "Prioridad 1 · EMA";
     return priority;
 }
+function doctorDisplayName(value) {
+    const doctor = value.trim();
+    return doctor.toLocaleLowerCase("es-PE").startsWith("dr.") ? doctor : `Dr. ${doctor}`;
+}
 function createStatus(item) {
     const view = statusPresentation(item.estado);
     const status = document.createElement("span");
@@ -122,7 +129,6 @@ function createAreaRow(item) {
 function createGeneralRow(item) {
     const row = document.createElement("div");
     row.className = "general-row";
-    row.classList.toggle("board-row--priority", item.isMedicalExam);
     row.setAttribute("role", "listitem");
     const turnCell = document.createElement("span");
     turnCell.className = "turn-cell";
@@ -130,13 +136,11 @@ function createGeneralRow(item) {
     id.className = "turn-id";
     id.textContent = item.publicId;
     turnCell.append(id);
-    if (item.isMedicalExam)
-        turnCell.append(createPriorityTag(true));
     const destination = document.createElement("span");
     destination.className = "destination-cell";
     const doctor = document.createElement("strong");
     doctor.className = "doctor-name";
-    doctor.textContent = item.medico;
+    doctor.textContent = doctorDisplayName(item.medico);
     const room = document.createElement("span");
     room.className = "destination-room";
     room.textContent = item.consultorio;
@@ -147,20 +151,31 @@ function createGeneralRow(item) {
 function buildAreaSlides(items) {
     const groups = new Map();
     for (const item of items) {
-        if (item.estado === "en-atencion")
-            continue;
         const key = `${item.consultorio}\u001f${item.medico}`;
-        const group = groups.get(key) ?? { consultorio: item.consultorio, medico: item.medico, items: [] };
-        group.items.push(item);
+        const group = groups.get(key) ?? {
+            consultorio: item.consultorio,
+            medico: item.medico,
+            items: [],
+            isAttending: false,
+            isCalling: false
+        };
+        group.isAttending ||= item.estado === "en-atencion";
+        group.isCalling ||= item.isActiveCall && item.estado !== "en-atencion";
+        if (!item.isActiveCall && item.estado !== "en-atencion")
+            group.items.push(item);
         groups.set(key, group);
     }
     const slides = [];
     for (const group of groups.values()) {
-        for (let index = 0; index < group.items.length; index += maxVisibleRows) {
+        const status = group.isAttending ? "atendiendo" : group.isCalling ? "llamando" : "disponible";
+        const pageCount = Math.max(1, Math.ceil(group.items.length / maxVisibleRows));
+        for (let page = 0; page < pageCount; page++) {
+            const index = page * maxVisibleRows;
             slides.push({
                 consultorio: group.consultorio,
                 medico: group.medico,
-                items: group.items.slice(index, index + maxVisibleRows)
+                items: group.items.slice(index, index + maxVisibleRows),
+                status
             });
         }
     }
@@ -170,6 +185,8 @@ function renderAreaSlide() {
     if (areaSlides.length === 0) {
         areaRoom.textContent = "Sin áreas pendientes";
         areaDoctor.textContent = "La pantalla se actualizará automáticamente";
+        areaStatus.textContent = "SIN DATOS";
+        areaStatus.className = "area-status area-status--available";
         areaCounter.textContent = "—";
         areaList.replaceChildren();
         areaEmpty.hidden = false;
@@ -181,7 +198,9 @@ function renderAreaSlide() {
     const fragment = document.createDocumentFragment();
     slide.items.forEach(item => fragment.append(createAreaRow(item)));
     areaRoom.textContent = slide.consultorio;
-    areaDoctor.textContent = slide.medico;
+    areaDoctor.textContent = doctorDisplayName(slide.medico);
+    areaStatus.textContent = slide.status.toUpperCase();
+    areaStatus.className = `area-status area-status--${slide.status}`;
     areaCounter.textContent = `${areaSlideIndex + 1} / ${areaSlides.length}`;
     areaList.replaceChildren(fragment);
     areaEmpty.hidden = true;
@@ -202,7 +221,7 @@ function restartAreaRotation(items) {
     }
 }
 function renderGeneral(items) {
-    const upcoming = items.filter(item => item.estado !== "en-atencion").slice(0, maxVisibleRows);
+    const upcoming = items.filter(item => !item.isActiveCall && item.estado !== "en-atencion").slice(0, maxVisibleRows);
     const fragment = document.createDocumentFragment();
     upcoming.forEach(item => fragment.append(createGeneralRow(item)));
     generalList.replaceChildren(fragment);
@@ -215,16 +234,33 @@ function renderFreshness(generatedAt) {
         : `Última actualización: ${shortTimeFormatter.format(generated)}`;
 }
 function speakCallout(item) {
-    if (!("speechSynthesis" in window) || !item.publicId || !item.consultorio) {
+    if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window) || !item.publicId || !item.consultorio) {
         return;
     }
-    window.speechSynthesis.cancel();
-    const announcement = new SpeechSynthesisUtterance(`Llamando a ${item.publicId}. Diríjase al consultorio ${item.consultorio}.`);
-    announcement.lang = "es-PE";
-    announcement.rate = 0.9;
-    announcement.pitch = 1;
-    announcement.volume = 1;
-    window.speechSynthesis.speak(announcement);
+    const synthesizer = window.speechSynthesis;
+    let spoken = false;
+    const play = () => {
+        if (spoken)
+            return;
+        spoken = true;
+        synthesizer.cancel();
+        synthesizer.resume();
+        const announcement = new SpeechSynthesisUtterance(`Llamando a ${item.publicId}. Diríjase al consultorio ${item.consultorio}.`);
+        announcement.lang = "es-PE";
+        announcement.rate = 0.9;
+        announcement.pitch = 1;
+        announcement.volume = 1;
+        const spanishVoice = synthesizer.getVoices().find(voice => voice.lang.toLowerCase().startsWith("es"));
+        if (spanishVoice)
+            announcement.voice = spanishVoice;
+        synthesizer.speak(announcement);
+    };
+    if (synthesizer.getVoices().length === 0) {
+        synthesizer.addEventListener("voiceschanged", play, { once: true });
+        window.setTimeout(play, 500);
+        return;
+    }
+    play();
 }
 function hasSameVisibleContent(current, next) {
     if (current.siteDisplayName !== next.siteDisplayName || current.status !== next.status || current.items.length !== next.items.length) {
@@ -242,20 +278,24 @@ function hasSameVisibleContent(current, next) {
             item.isMedicalExam === candidate.isMedicalExam &&
             item.scheduledAt === candidate.scheduledAt &&
             item.arrivedAt === candidate.arrivedAt &&
-            item.shouldAnnounce === candidate.shouldAnnounce;
+            item.shouldAnnounce === candidate.shouldAnnounce &&
+            item.isActiveCall === candidate.isActiveCall;
     });
 }
 function renderSnapshot(snapshot) {
     siteName.textContent = snapshot.siteDisplayName;
-    const called = snapshot.items.find(item => item.estado === "en-atencion") ?? null;
+    const called = snapshot.items.find(item => item.isActiveCall) ?? null;
     if (called) {
+        const isAttending = called.estado === "en-atencion";
         callout.classList.remove("callout--idle");
         callout.classList.toggle("callout--priority", called.isMedicalExam);
-        calledLabel.textContent = called.isMedicalExam ? "Prioridad 1 · Examen médico" : "Llamando ahora";
+        calledLabel.textContent = isAttending
+            ? "ATENDIENDO"
+            : called.isMedicalExam ? "Prioridad 1 · Examen médico" : "LLAMANDO AHORA";
         calledTurn.textContent = called.publicId;
         calledRoom.textContent = called.consultorio;
-        calledDoctor.textContent = called.medico;
-        calledMessage.textContent = "Pase, por favor";
+        calledDoctor.textContent = doctorDisplayName(called.medico);
+        calledMessage.textContent = isAttending ? "Atención en curso" : "Pase, por favor";
     }
     else {
         callout.classList.add("callout--idle");
@@ -270,7 +310,7 @@ function renderSnapshot(snapshot) {
     restartAreaRotation(snapshot.items);
     renderFreshness(snapshot.generatedAt);
     const announcedVersion = Number.parseInt(sessionStorage.getItem(announcementStorageKey) ?? "-1", 10);
-    const announcedTurn = snapshot.items.find(item => item.shouldAnnounce && item.estado === "en-atencion");
+    const announcedTurn = snapshot.items.find(item => item.shouldAnnounce && item.isActiveCall);
     if (announcedTurn && announcedVersion !== snapshot.version) {
         sessionStorage.setItem(announcementStorageKey, String(snapshot.version));
         callout.classList.remove("callout--announce");
@@ -279,8 +319,13 @@ function renderSnapshot(snapshot) {
     }
 }
 function applySnapshot(snapshot, persist = true) {
-    if (currentSnapshot && snapshot.version < currentSnapshot.version)
-        return;
+    if (currentSnapshot && snapshot.version < currentSnapshot.version) {
+        const incomingGeneratedAt = Date.parse(snapshot.generatedAt);
+        const currentGeneratedAt = Date.parse(currentSnapshot.generatedAt);
+        if (Number.isNaN(incomingGeneratedAt) ||
+            (!Number.isNaN(currentGeneratedAt) && incomingGeneratedAt <= currentGeneratedAt))
+            return;
+    }
     if (currentSnapshot && snapshot.version === currentSnapshot.version) {
         const contentChanged = !hasSameVisibleContent(currentSnapshot, snapshot);
         currentSnapshot = snapshot;
@@ -289,7 +334,6 @@ function applySnapshot(snapshot, persist = true) {
         }
         else
             renderFreshness(snapshot.generatedAt);
-        updateHealthIndicator();
         if (persist) {
             try {
                 localStorage.setItem(snapshotStorageKey, JSON.stringify(snapshot));
@@ -300,7 +344,6 @@ function applySnapshot(snapshot, persist = true) {
     }
     currentSnapshot = snapshot;
     renderSnapshot(snapshot);
-    updateHealthIndicator();
     if (persist) {
         try {
             localStorage.setItem(snapshotStorageKey, JSON.stringify(snapshot));
