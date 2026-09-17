@@ -25,17 +25,15 @@ public sealed class TurnosSnapshotBuilderTests
     }
 
     [Fact]
-    public void TransitionFromWaitingToAttentionAnnouncesOnlyThatTransition()
+    public void TurnWithPrefacturaIsMarkedAttendingButNotExposed()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var at = new DateTime(2026, 9, 16, 9, 0, 0);
         TurnoRaw[] raw = [new(1, "DEMO", "C1", "Medico", at, at, "N", 20, null, null, false)];
 
         var transition = builder.Build(raw, new Dictionary<long, TurnoStatus> { [1] = TurnoStatus.EnEspera }, new DateTimeOffset(at, TimeSpan.Zero));
-        var repeated = builder.Build(raw, transition.States, new DateTimeOffset(at, TimeSpan.Zero));
-
-        Assert.True(transition.Items.Single().ShouldAnnounce);
-        Assert.False(repeated.Items.Single().ShouldAnnounce);
+        Assert.Equal(TurnoStatus.EnAtencion, transition.States[1]);
+        Assert.Empty(transition.Items);
     }
 
     [Fact]
@@ -96,6 +94,19 @@ public sealed class TurnosSnapshotBuilderTests
         var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
 
         Assert.Equal(9, result.Items.Count);
+    }
+
+    [Fact]
+    public void PendingPatientIsHiddenAfterTheirScheduledMinute()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var scheduled = new DateTime(2026, 9, 16, 9, 0, 0);
+        var result = builder.Build(
+            [new TurnoRaw(1, "PENDIENTE", "C1", "Medico", scheduled, scheduled, "N", null, null, null, false)],
+            new Dictionary<long, TurnoStatus>(),
+            new DateTimeOffset(scheduled.AddMinutes(30), TimeSpan.Zero));
+
+        Assert.Empty(result.Items);
     }
 
     private static TurnosSnapshotBuilder CreateBuilder(BusinessRulesOptions rules)

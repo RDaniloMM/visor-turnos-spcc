@@ -144,7 +144,9 @@ function doctorDisplayName(value: string): string {
 }
 
 function createStatus(item: TurnoPublico): HTMLElement {
-    const view = statusPresentation(item.estado);
+    const view = item.isActiveCall
+        ? { label: "Llamando", css: "status--calling" }
+        : statusPresentation(item.estado);
     const status = document.createElement("span");
     status.className = `status-pill ${view.css}`;
     status.textContent = view.label;
@@ -214,7 +216,7 @@ function buildAreaSlides(items: TurnoPublico[]): AreaSlide[] {
         };
         group.isAttending ||= item.estado === "en-atencion";
         group.isCalling ||= item.isActiveCall && item.estado !== "en-atencion";
-        if (!item.isActiveCall && item.estado !== "en-atencion") group.items.push(item);
+        if (item.estado !== "en-atencion") group.items.push(item);
         groups.set(key, group);
     }
 
@@ -291,6 +293,25 @@ function renderFreshness(generatedAt: string): void {
         : `Última actualización: ${shortTimeFormatter.format(generated)}`;
 }
 
+function selectPeruvianSpanishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+    const spanish = voices.filter(voice => voice.lang.toLocaleLowerCase().startsWith("es"));
+    const exactPeruvian = spanish.find(voice => voice.lang.toLocaleLowerCase() === "es-pe");
+    if (exactPeruvian) return exactPeruvian;
+
+    const namedPeruvian = spanish.find(voice => /per[uú]/i.test(voice.name));
+    if (namedPeruvian) return namedPeruvian;
+
+    // Preferimos acentos latinoamericanos no argentinos cuando la TV no tiene
+    // instalada una voz peruana. La voz disponible sigue dependiendo de Windows.
+    const latinAmerican = ["es-us", "es-mx", "es-co", "es-cl"];
+    for (const locale of latinAmerican) {
+        const voice = spanish.find(candidate => candidate.lang.toLocaleLowerCase() === locale);
+        if (voice) return voice;
+    }
+
+    return spanish.find(voice => voice.lang.toLocaleLowerCase() !== "es-ar") ?? spanish[0];
+}
+
 function speakCallout(item: TurnoPublico): void {
     if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window) || !item.publicId || !item.consultorio) {
         return;
@@ -311,7 +332,7 @@ function speakCallout(item: TurnoPublico): void {
         announcement.rate = 0.9;
         announcement.pitch = 1;
         announcement.volume = 1;
-        const spanishVoice = synthesizer.getVoices().find(voice => voice.lang.toLowerCase().startsWith("es"));
+        const spanishVoice = selectPeruvianSpanishVoice(synthesizer.getVoices());
         if (spanishVoice) announcement.voice = spanishVoice;
         synthesizer.speak(announcement);
     };

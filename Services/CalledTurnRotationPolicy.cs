@@ -10,82 +10,81 @@ public sealed record ActiveCallSelection(long? StableId, bool ShouldAnnounce)
 }
 
 /// <summary>
-/// Coordina un único llamado público. Un paciente llamado sin prefactura se
-/// reubica al final de la cola de su propio consultorio; nunca se escribe en
-/// LOLCLI ni se elimina una cita desde el visor.
+/// Coordina una cola independiente por consultorio y médico. Un paciente llamado
+/// sin prefactura se reubica al final de la cola de su propia área; nunca se
+/// escribe en LOLCLI ni se elimina una cita desde el visor.
 /// </summary>
 public sealed class CalledTurnRotationPolicy(IOptions<QueueOptions> options)
 {
     private readonly Dictionary<long, int> _attemptsByTurn = [];
-    private long? _activeId;
-    private string? _activeArea;
-    private DateTimeOffset _activeSince;
-    private bool _repeatAnnouncementSent;
+    private readonly Dictionary<string, ActiveCallState> _activeByArea = [];
 
-    public ActiveCallSelection Select(
+    public IReadOnlyList<ActiveCallSelection> Select(
         IReadOnlyList<TurnoCandidate> orderedCandidates,
         IReadOnlyList<ClosedTurn> closedTurns,
         DateTimeOffset now)
     {
-        var active = _activeId.HasValue
-            ? orderedCandidates.FirstOrDefault(item => item.StableId == _activeId.Value)
-            : null;
-
-        if (active is not null)
+        var selections = new List<ActiveCallSelection>();
+        foreach (var area in orderedCandidates.GroupBy(item => item.AreaKey))
         {
-            // Una prefactura válida significa que el paciente está siendo atendido:
-            // no se rota por tiempo; se espera el cierre confirmado en LOLCLI.
-            if (active.Status == TurnoStatus.EnAtencion)
+            var candidates = area.ToArray();
+            if (_activeByArea.TryGetValue(area.Key, out var activeState))
             {
-                return new ActiveCallSelection(active.StableId, false);
+                var active = candidates.FirstOrDefault(item => item.StableId == activeState.StableId);
+                if (active is null)
+                {
+                    var wasClosed = closedTurns.Any(item => item.StableId == activeState.StableId);
+                    _activeByArea.Remove(area.Key);
+                    _attemptsByTurn.Remove(activeState.StableId);
+                    if (wasClosed) AddIfPresent(selections, StartNextInArea(candidates, area.Key, now));
+                    continue;
+                }
+
+                // Una prefactura válida libera solo la cola de este consultorio.
+                if (active.Status == TurnoStatus.EnAtencion)
+                {
+                    _activeByArea.Remove(area.Key);
+                    _attemptsByTurn.Remove(active.StableId);
+                    AddIfPresent(selections, StartNextInArea(candidates, area.Key, now));
+                    continue;
+                }
+
+                var elapsed = now - activeState.Since;
+                if (!activeState.RepeatAnnouncementSent && elapsed >= TimeSpan.FromSeconds(options.Value.RepeatCallAnnouncementSeconds))
+                {
+                    _activeByArea[area.Key] = activeState with { RepeatAnnouncementSent = true };
+                    selections.Add(new ActiveCallSelection(active.StableId, true));
+                    continue;
+                }
+
+                if (elapsed < TimeSpan.FromSeconds(options.Value.CalledDisplaySeconds))
+                {
+                    selections.Add(new ActiveCallSelection(active.StableId, false));
+                    continue;
+                }
+
+                AddIfPresent(selections, StartNextInArea(candidates, area.Key, now));
+                continue;
             }
 
-            var elapsed = now - _activeSince;
-            if (!_repeatAnnouncementSent && elapsed >= TimeSpan.FromSeconds(options.Value.RepeatCallAnnouncementSeconds))
-            {
-                _repeatAnnouncementSent = true;
-                return new ActiveCallSelection(active.StableId, true);
-            }
-
-            if (elapsed < TimeSpan.FromSeconds(options.Value.CalledDisplaySeconds))
-            {
-                return new ActiveCallSelection(active.StableId, false);
-            }
-
-            return StartNextInArea(orderedCandidates, active.AreaKey, now, active.StableId);
+            // Tanto una prefactura detectada como el inicio de la jornada liberan
+            // la cola de este consultorio. StartNextInArea decide si ya existe una
+            // cita cuya hora programada se cumplió.
+            AddIfPresent(selections, StartNextInArea(candidates, area.Key, now));
         }
 
-        if (_activeId.HasValue)
-        {
-            var completed = closedTurns.Any(item => item.StableId == _activeId.Value);
-            var areaKey = _activeArea;
-            _attemptsByTurn.Remove(_activeId.Value);
-            _activeId = null;
-            _activeArea = null;
-
-            return completed && !string.IsNullOrWhiteSpace(areaKey)
-                ? StartNextInArea(orderedCandidates, areaKey, now, null)
-                : ActiveCallSelection.None;
-        }
-
-        var databaseCall = orderedCandidates.FirstOrDefault(item => item.Status == TurnoStatus.EnAtencion);
-        if (databaseCall is null)
-        {
-            return ActiveCallSelection.None;
-        }
-
-        Start(databaseCall, now, countAsAttempt: false);
-        return new ActiveCallSelection(databaseCall.StableId, false);
+        return selections;
     }
 
     private ActiveCallSelection StartNextInArea(
         IReadOnlyList<TurnoCandidate> orderedCandidates,
         string areaKey,
-        DateTimeOffset now,
-        long? timedOutId)
+        DateTimeOffset now)
     {
         var next = orderedCandidates
-            .Where(item => item.AreaKey == areaKey && item.Status != TurnoStatus.EnAtencion)
+            .Where(item => item.AreaKey == areaKey)
+            .Where(item => item.Status is TurnoStatus.EnEspera or TurnoStatus.PendienteLlegada)
+            .Where(item => IsScheduledForCurrentMinute(item.ScheduledAt, now) || _attemptsByTurn.ContainsKey(item.StableId))
             .Where(item => !_attemptsByTurn.TryGetValue(item.StableId, out var attempts) || attempts < 4)
             .OrderBy(item => _attemptsByTurn.ContainsKey(item.StableId) ? 1 : 0)
             .ThenBy(item => item.PriorityTier)
@@ -98,8 +97,6 @@ public sealed class CalledTurnRotationPolicy(IOptions<QueueOptions> options)
 
         if (next is null)
         {
-            _activeId = null;
-            _activeArea = null;
             return ActiveCallSelection.None;
         }
 
@@ -109,13 +106,26 @@ public sealed class CalledTurnRotationPolicy(IOptions<QueueOptions> options)
 
     private void Start(TurnoCandidate candidate, DateTimeOffset now, bool countAsAttempt)
     {
-        _activeId = candidate.StableId;
-        _activeArea = candidate.AreaKey;
-        _activeSince = now;
-        _repeatAnnouncementSent = false;
+        _activeByArea[candidate.AreaKey] = new ActiveCallState(candidate.StableId, now, false);
         if (countAsAttempt)
         {
             _attemptsByTurn[candidate.StableId] = _attemptsByTurn.GetValueOrDefault(candidate.StableId) + 1;
         }
+    }
+
+    private static void AddIfPresent(List<ActiveCallSelection> selections, ActiveCallSelection selection)
+    {
+        if (selection.StableId.HasValue) selections.Add(selection);
+    }
+
+    private sealed record ActiveCallState(long StableId, DateTimeOffset Since, bool RepeatAnnouncementSent);
+
+    private static DateTimeOffset StartOfMinute(DateTimeOffset value) =>
+        new(value.Year, value.Month, value.Day, value.Hour, value.Minute, 0, value.Offset);
+
+    private static bool IsScheduledForCurrentMinute(DateTimeOffset scheduledAt, DateTimeOffset now)
+    {
+        var minuteStart = StartOfMinute(now);
+        return scheduledAt >= minuteStart && scheduledAt < minuteStart.AddMinutes(1);
     }
 }

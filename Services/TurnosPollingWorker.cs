@@ -33,11 +33,12 @@ public sealed class TurnosPollingWorker(
                 var now = timeProvider.GetUtcNow();
                 var siteZone = TimeZoneInfo.FindSystemTimeZoneById(siteOptions.Value.TimeZone);
                 var localNow = TimeZoneInfo.ConvertTime(now, siteZone);
-                var dayStart = DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified);
+                var dayStart = localNow.Date;
+                var dayEndExclusive = dayStart.AddDays(1);
                 var rawItems = await repository.GetForDayAsync(
                     siteOptions.Value.Code,
                     dayStart,
-                    dayStart.AddDays(1),
+                    dayEndExclusive,
                     queueOptions.Value.MaxQueryRows,
                     stoppingToken);
 

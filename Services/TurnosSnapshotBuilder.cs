@@ -70,8 +70,18 @@ public sealed class TurnosSnapshotBuilder(
             .ThenBy(item => item.StableId)
             .ToArray();
 
-        var activeCall = calledTurnRotationPolicy.Select(orderedCandidates, closedTurns, now);
+        var activeCalls = calledTurnRotationPolicy.Select(orderedCandidates, closedTurns, now);
+        var activeCallIds = activeCalls
+            .Where(selection => selection.StableId.HasValue)
+            .Select(selection => selection.StableId!.Value)
+            .ToHashSet();
+        var announcementIds = activeCalls
+            .Where(selection => selection.ShouldAnnounce && selection.StableId.HasValue)
+            .Select(selection => selection.StableId!.Value)
+            .ToHashSet();
         var items = orderedCandidates
+            .Where(item => item.Status != TurnoStatus.EnAtencion)
+            .Where(item => item.ScheduledAt >= now || activeCallIds.Contains(item.StableId))
             .Select(item => new TurnoPublicoDto(
                 item.PublicId,
                 item.Consultorio,
@@ -85,8 +95,8 @@ public sealed class TurnosSnapshotBuilder(
                 (previousStates.TryGetValue(item.StableId, out var previous) &&
                     previous == TurnoStatus.EnEspera &&
                     item.Status == TurnoStatus.EnAtencion) ||
-                (activeCall.ShouldAnnounce && activeCall.StableId == item.StableId),
-                activeCall.StableId == item.StableId))
+                announcementIds.Contains(item.StableId),
+                activeCallIds.Contains(item.StableId)))
             .ToArray();
 
         return new TurnosBuildResult(items, states);

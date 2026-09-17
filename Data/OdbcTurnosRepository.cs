@@ -37,7 +37,12 @@ public sealed class OdbcTurnosRepository(
         WHERE c.siscod = ?
           AND c.citdat >= ?
           AND c.citdat < ?
-        ORDER BY CASE WHEN c.statte = ? THEN 1 ELSE 0 END,
+        ORDER BY CASE
+                    WHEN c.statte = ? THEN 2
+                    WHEN c.prfnum > 0 THEN 0
+                    WHEN c.cithll IS NOT NULL THEN 1
+                    ELSE 2
+                 END,
                  c.citdat,
                  c.invnum;
         """;
@@ -45,7 +50,7 @@ public sealed class OdbcTurnosRepository(
     public async Task<IReadOnlyList<TurnoRaw>> GetForDayAsync(
         int siteCode,
         DateTime dayStart,
-        DateTime nextDayStart,
+        DateTime dayEndExclusive,
         int maxRows,
         CancellationToken cancellationToken)
     {
@@ -60,7 +65,7 @@ public sealed class OdbcTurnosRepository(
         AddParameter(command, OdbcType.VarChar, priorityOptions.Value.MedicalExamObservationCode, 20);
         AddParameter(command, OdbcType.Int, siteCode);
         AddParameter(command, OdbcType.DateTime, dayStart);
-        AddParameter(command, OdbcType.DateTime, nextDayStart);
+        AddParameter(command, OdbcType.DateTime, dayEndExclusive);
         AddParameter(command, OdbcType.VarChar, GetClosedStatusCode(), 2);
 
         var results = new List<TurnoRaw>();
