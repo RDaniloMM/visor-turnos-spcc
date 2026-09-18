@@ -100,7 +100,7 @@ public sealed class TurnosQueue(
                 var areaPosition = 0;
                 foreach (var entry in area
                              .OrderBy(entry => activeAppointmentIds.Contains(entry.AppointmentId) ? 0 : 1)
-                             .ThenBy(entry => IsUnconsumedOpenAct(entry) ? 0 : 1)
+                             .ThenBy(entry => IsUnconsumedConsultation(entry) ? 0 : 1)
                              .ThenBy(entry => entry.IsAbsent ? 1 : 0)
                              .ThenBy(entry => entry.Turno.PriorityTier)
                              .ThenBy(entry => entry.CallAttempts > 0 ? 1 : 0)
@@ -116,7 +116,7 @@ public sealed class TurnosQueue(
                             ? "esperando-cierre"
                             : entry.Turno.Status == TurnoStatus.Cerrado && entry.CallAttempts > 0
                                 ? "esperando-reactivacion"
-                                : IsUnconsumedOpenAct(entry)
+                                : IsUnconsumedConsultation(entry)
                                     ? "habilitado"
                                     : "proximo";
                     snapshot.Add(new DevelopmentQueueEntryDto(
@@ -168,7 +168,7 @@ public sealed class TurnosQueue(
                     ConsultationLastModifiedAt = candidate.ConsultationLastModifiedAt,
                     Turno = candidate,
                     CallAttempts = Math.Max(previous.CallAttempts, completedAttempts),
-                    IsAwaitingClose = previous.IsAwaitingClose && IsConsumedOpenAct(candidate)
+                    IsAwaitingClose = previous.IsAwaitingClose && IsConsumedCurrentConsultation(candidate)
                 };
                 continue;
             }
@@ -191,8 +191,9 @@ public sealed class TurnosQueue(
 
     private ActiveCallSelection StartNextGlobally(DateTimeOffset now)
     {
-        // El médico habilita explícitamente cada llamado creando un numcon en
-        // T. Las citas todavía no habilitadas no bloquean otra elección manual
+        // El médico habilita explícitamente cada llamado creando un numcon.
+        // La prefactura y el valor inicial de stacon no son prerrequisitos.
+        // Las citas todavía no habilitadas no bloquean otra elección manual
         // del mismo consultorio. El altavoz sigue siendo único para toda la TV.
         var next = _entriesByAppointment.Values
             .GroupBy(entry => entry.Turno.AreaKey)
@@ -250,43 +251,43 @@ public sealed class TurnosQueue(
         return localTime < morningEnd || (localTime >= afternoonStart && localTime < afternoonEnd);
     }
 
-    private bool IsUnconsumedOpenAct(TurnoQueueEntry entry) =>
+    private bool IsUnconsumedConsultation(TurnoQueueEntry entry) =>
         entry.Turno.Status == TurnoStatus.EnEspera &&
-        entry.PrefacturaNumber is not null and not 0 &&
         entry.ConsultationId.HasValue &&
-        string.Equals(entry.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase) &&
+        !IsConsultationClosed(entry.ConsultationStatus) &&
         !_consumedConsultationIds.Contains(entry.ConsultationId.Value);
 
     private bool CanStartCall(TurnoQueueEntry entry, DateTimeOffset now) =>
         entry.CallAttempts < options.Value.MaxCallAttempts &&
         !entry.IsRequeueExpired &&
         (entry.CallAttempts == 0 || CanRequeue(now)) &&
-        IsUnconsumedOpenAct(entry);
+        IsUnconsumedConsultation(entry);
 
     private bool IsAreaBusy(string areaKey) =>
         _entriesByAppointment.Values.Any(entry =>
             string.Equals(entry.Turno.AreaKey, areaKey, StringComparison.Ordinal) &&
             entry.ConsultationId.HasValue &&
             _consumedConsultationIds.Contains(entry.ConsultationId.Value) &&
-            string.Equals(entry.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase));
+            !IsConsultationClosed(entry.ConsultationStatus));
 
     private static bool IsCurrentOpenAct(TurnoQueueEntry entry, long consultationId) =>
         entry.ConsultationId == consultationId &&
-        string.Equals(entry.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase);
+        !IsConsultationClosed(entry.ConsultationStatus);
 
-    private bool IsConsumedOpenAct(TurnoCandidate candidate) =>
+    private bool IsConsumedCurrentConsultation(TurnoCandidate candidate) =>
         candidate.ConsultationId.HasValue &&
         _consumedConsultationIds.Contains(candidate.ConsultationId.Value) &&
-        string.Equals(candidate.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase);
+        !IsConsultationClosed(candidate.ConsultationStatus);
 
     private static int GetCompletedAttemptCount(TurnoCandidate candidate)
     {
-        var currentActIsOpen = string.Equals(
-            candidate.ConsultationStatus,
-            "T",
-            StringComparison.OrdinalIgnoreCase);
+        var currentActIsOpen = candidate.ConsultationId.HasValue &&
+            !IsConsultationClosed(candidate.ConsultationStatus);
         return Math.Max(0, candidate.ConsultationAttemptCount - (currentActIsOpen ? 1 : 0));
     }
+
+    private static bool IsConsultationClosed(string? status) =>
+        string.Equals(status?.Trim(), "P", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<ActiveCallSelection> ToSelection(ActiveCallSelection selection) =>
         selection.StableId.HasValue ? [selection] : [];

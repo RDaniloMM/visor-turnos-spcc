@@ -115,7 +115,6 @@ public sealed class TurnosSnapshotBuilder(
     }
 
     private static bool IsReadyForVoiceCall(TurnoCandidate item) =>
-        item.PrefacturaNumber is not null and not 0 &&
         item.ConsultationId.HasValue &&
-        string.Equals(item.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase);
+        !string.Equals(item.ConsultationStatus, "P", StringComparison.OrdinalIgnoreCase);
 }

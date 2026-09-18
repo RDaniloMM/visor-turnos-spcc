@@ -40,8 +40,7 @@ public sealed class DevelopmentSimulationRepository(
                        consultation.feccre,
                        consultation.fecumv
                 FROM dbo.am_consulta AS consultation
-                WHERE consultation.prfnum = c.prfnum
-                  AND consultation.invnum = c.invnum
+                WHERE consultation.invnum = c.invnum
                 ORDER BY consultation.feccon DESC, consultation.numcon DESC
             ) AS ac
             WHERE c.siscod = ? AND c.citdat >= ? AND c.citdat < ?
@@ -122,10 +121,6 @@ public sealed class DevelopmentSimulationRepository(
         await using var connection = await OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
         var prefactura = await GetPrefacturaAsync(connection, transaction, invnum, cancellationToken);
-        if (!prefactura.HasValue || prefactura.Value == 0)
-        {
-            prefactura = await GetNextPrefacturaAsync(connection, transaction, cancellationToken);
-        }
 
         var alreadyOpen = await HasOpenMedicalActAsync(connection, transaction, invnum, cancellationToken);
         if (alreadyOpen)
@@ -136,10 +131,9 @@ public sealed class DevelopmentSimulationRepository(
 
         var affected = await ExecuteAsync(connection, transaction, """
             UPDATE dbo.citas
-            SET prfnum = ?, statte = 'N'
-            WHERE invnum = ?
-              AND (prfnum IS NULL OR prfnum = 0 OR prfnum = ?);
-            """, cancellationToken, prefactura.Value, invnum, prefactura.Value);
+            SET statte = 'N'
+            WHERE invnum = ?;
+            """, cancellationToken, invnum);
         if (affected != 1)
         {
             transaction.Rollback();
@@ -151,11 +145,11 @@ public sealed class DevelopmentSimulationRepository(
         await ExecuteAsync(connection, transaction, """
             INSERT INTO dbo.am_consulta (numcon, invnum, prfnum, stacon, feccon, feccre, fecumv)
             VALUES (?, ?, ?, 'T', ?, ?, ?);
-            """, cancellationToken, consultationId, invnum, prefactura.Value, now, now, now);
+            """, cancellationToken, consultationId, invnum, prefactura.GetValueOrDefault(), now, now, now);
         transaction.Commit();
         return new SimulationActionResultDto(
             true,
-            $"Acto médico {consultationId} abierto en T con la prefactura {prefactura.Value}.");
+            $"Acto médico {consultationId} creado. El nuevo numcon habilita el llamado sin depender de una prefactura.");
     }
 
     public async Task<SimulationActionResultDto> SaveConsultationAsync(int invnum, CancellationToken cancellationToken)
@@ -225,19 +219,17 @@ public sealed class DevelopmentSimulationRepository(
     {
         await using var connection = await OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
-        var prefactura = await GetPrefacturaAsync(connection, transaction, invnum, cancellationToken);
-        if (!prefactura.HasValue)
-        {
-            transaction.Rollback();
-            return new SimulationActionResultDto(false, "El turno no tiene una prefactura local que restablecer.");
-        }
-
-        await ExecuteAsync(connection, transaction, "DELETE FROM dbo.am_consulta WHERE prfnum = ?;", cancellationToken, prefactura.Value);
-        await ExecuteAsync(connection, transaction,
+        await ExecuteAsync(connection, transaction, "DELETE FROM dbo.am_consulta WHERE invnum = ?;", cancellationToken, invnum);
+        var updated = await ExecuteAsync(connection, transaction,
             "UPDATE dbo.citas SET prfnum = 0, statte = 'N' WHERE invnum = ?;",
             cancellationToken, invnum);
+        if (updated != 1)
+        {
+            transaction.Rollback();
+            return new SimulationActionResultDto(false, "La cita local no existe.");
+        }
         transaction.Commit();
-        return new SimulationActionResultDto(true, "Turno local restablecido para una nueva simulación.");
+        return new SimulationActionResultDto(true, "Turno local restablecido; se eliminaron sus numcon de prueba.");
     }
 
     private async Task<OdbcConnection> OpenAsync(CancellationToken cancellationToken)
@@ -245,15 +237,6 @@ public sealed class DevelopmentSimulationRepository(
         var connection = new OdbcConnection(guard.GetConnectionString());
         await connection.OpenAsync(cancellationToken);
         return connection;
-    }
-
-    private async Task<int> GetNextPrefacturaAsync(OdbcConnection connection, OdbcTransaction transaction, CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "SELECT ISNULL(MAX(prfnum), 8000000) + 1 FROM dbo.citas;";
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-        return Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task<int> GetNextAppointmentNumberAsync(

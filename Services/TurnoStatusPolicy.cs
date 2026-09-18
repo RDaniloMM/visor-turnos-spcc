@@ -14,19 +14,18 @@ public sealed class TurnoStatusPolicy(
         var consultationStatus = turno.ConsultationStatus?.Trim();
         var prefactura = prefacturaPolicy.Evaluate(turno.PrefacturaNumber);
 
-        // Una reapertura crea un numcon nuevo en T, pero LOLCLI puede conservar
-        // citas.statte=S. El acto más reciente es la señal específica y debe
-        // prevalecer sobre el estado histórico de la cita.
-        if (prefactura == PrefacturaPresence.Present &&
-            turno.ConsultationId.HasValue &&
-            string.Equals(consultationStatus, "T", StringComparison.OrdinalIgnoreCase))
-        {
-            return TurnoStatus.EnEspera;
-        }
-
-        if (string.Equals(consultationStatus, "P", StringComparison.OrdinalIgnoreCase))
+        // numcon es la señal de que el médico seleccionó al paciente. No se
+        // exige que la prefactura ya exista: el acto más reciente prevalece
+        // sobre el estado histórico de citas mientras no haya sido guardado.
+        if (turno.ConsultationId.HasValue &&
+            string.Equals(consultationStatus, "P", StringComparison.OrdinalIgnoreCase))
         {
             return TurnoStatus.Cerrado;
+        }
+
+        if (turno.ConsultationId.HasValue)
+        {
+            return TurnoStatus.EnEspera;
         }
 
         if (!string.IsNullOrEmpty(rawStatus) && options.Value.ClosedStatusCodes.Contains(rawStatus, StringComparer.OrdinalIgnoreCase))

@@ -78,14 +78,13 @@ public sealed class OdbcTurnosRepository(
                 consultation.feccre,
                 consultation.fecumv
             FROM dbo.am_consulta AS consultation
-            WHERE consultation.prfnum = c.prfnum
-              AND consultation.invnum = c.invnum
+            WHERE consultation.invnum = c.invnum
             ORDER BY consultation.feccon DESC,
                      consultation.numcon DESC
         ) AS ac
         WHERE c.citdat >= ?
            OR c.observacion_normalizada = ?
-        ORDER BY CASE WHEN ac.stacon = 'T' THEN 0 ELSE 1 END,
+        ORDER BY CASE WHEN ac.numcon IS NOT NULL AND (ac.stacon IS NULL OR ac.stacon <> 'P') THEN 0 ELSE 1 END,
                  is_medical_exam DESC,
                  is_amanecida DESC,
                  c.citdat,

@@ -117,13 +117,13 @@ function orderedQueueState(entry) {
     return entry.isEligibleForCall ? "Habilitado para llamar" : "Próximo";
 }
 
-function appendSimulationActions(row, appointmentId, hasOpenAct, hasPrefactura) {
+function appendSimulationActions(row, appointmentId, hasOpenAct, hasConsultation) {
     const actions = document.createElement("td");
     actions.className = "actions";
     actions.append(
         actionButton("Llamar", "llamar", hasOpenAct),
         actionButton("Guardar", "guardar-consulta", !hasOpenAct),
-        actionButton("Restablecer", "restablecer", !hasPrefactura));
+        actionButton("Restablecer", "restablecer", !hasConsultation));
     for (const button of actions.querySelectorAll("button")) {
         button.addEventListener("click", () => void runAction(appointmentId, button.dataset.action ?? "", button));
     }
@@ -151,7 +151,7 @@ function renderOrderedQueue(entries, turns) {
             row,
             entry.appointmentId,
             technicalTurn?.consultationStatus === "T",
-            Boolean(entry.prefacturaNumber && entry.prefacturaNumber !== 0));
+            Boolean(entry.consultationId));
         fragment.append(row);
     }
     orderedTableBody.replaceChildren(fragment);
@@ -230,8 +230,7 @@ function render(turns, focusAppointmentId = null) {
         row.append(textCell(formatDateTime(turn.consultationCreatedAt)));
         row.append(textCell(formatDateTime(turn.consultationLastModifiedAt)));
 
-        const hasPrefactura = Boolean(turn.prefacturaNumber && turn.prefacturaNumber !== 0);
-        appendSimulationActions(row, turn.invnum, turn.consultationStatus === "T", hasPrefactura);
+        appendSimulationActions(row, turn.invnum, turn.consultationStatus === "T", Boolean(turn.consultationId));
         fragment.append(row);
     }
     tableBody.replaceChildren(fragment);

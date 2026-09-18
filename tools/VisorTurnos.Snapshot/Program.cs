@@ -77,7 +77,7 @@ static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayE
     var consultas = await ReadAsync(source, """
         SELECT ac.numcon, ac.invnum, ac.prfnum, ac.stacon, ac.feccon, ac.feccre, ac.fecumv
         FROM dbo.am_consulta AS ac
-        INNER JOIN dbo.citas AS c ON c.prfnum = ac.prfnum AND c.invnum = ac.invnum
+        INNER JOIN dbo.citas AS c ON c.invnum = ac.invnum
         WHERE c.siscod = ? AND c.citdat >= ? AND c.citdat < ?;
         """, command =>
     {
@@ -181,7 +181,7 @@ static async Task ReplaceSnapshotAsync(SnapshotData snapshot)
             fecumv datetime2(3) NULL
         );
         CREATE INDEX IX_citas_site_date ON dbo.citas (siscod, citdat, invnum);
-        CREATE INDEX IX_am_consulta_prefactura ON dbo.am_consulta (prfnum, invnum, feccon, numcon);
+        CREATE INDEX IX_am_consulta_cita ON dbo.am_consulta (invnum, feccon, numcon);
         """, transaction);
 
     foreach (var medico in snapshot.Medicos)
