@@ -8,32 +8,32 @@ namespace VisorTurnos.UnitTests;
 public sealed class TurnosSnapshotBuilderTests
 {
     [Fact]
-    public void OrderingIsStableAndConfiguredPriorityWins()
+    public void ValidatedPriorityHierarchyPrecedesAppointmentTime()
     {
-        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true, PriorityTierByCitedType = new() { ["URG"] = 1 } });
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var at = new DateTime(2026, 9, 16, 9, 0, 0);
         TurnoRaw[] raw =
         [
-            new(2, "B", "C2", "Medico B", at, at, "N", null, null, null, false),
-            new(3, "URG", "C3", "Medico C", at.AddMinutes(5), at.AddMinutes(5), "N", null, "URG", null, false),
-            new(1, "A", "C1", "Medico A", at, at, "N", null, null, null, false)
+            new(1, "REGULAR", "C1", "Medico A", at, at, "N", null, null, null, false),
+            new(2, "AMANECIDA", "C2", "Medico B", at.AddMinutes(5), at.AddMinutes(5), "N", null, null, null, false, IsAmanecida: true),
+            new(3, "EMA", "C3", "Medico C", at.AddMinutes(10), at.AddMinutes(10), "N", null, null, null, true)
         ];
 
         var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
 
-        Assert.Equal(["URG", "A", "B"], result.Items.Select(item => item.PublicId));
+        Assert.Equal(["EMA", "AMANECIDA", "REGULAR"], result.Items.Select(item => item.PublicId));
     }
 
     [Fact]
-    public void TurnWithPrefacturaIsMarkedAttendingButNotExposed()
+    public void TurnWithPrefacturaAndMedicalConsultationIsExposedAsReady()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var at = new DateTime(2026, 9, 16, 9, 0, 0);
-        TurnoRaw[] raw = [new(1, "DEMO", "C1", "Medico", at, at, "N", 20, null, null, false)];
+        TurnoRaw[] raw = [new(1, "DEMO", "C1", "Medico", at, at, "N", 20, null, null, false, true, "T", ConsultationId: 100)];
 
         var transition = builder.Build(raw, new Dictionary<long, TurnoStatus> { [1] = TurnoStatus.EnEspera }, new DateTimeOffset(at, TimeSpan.Zero));
-        Assert.Equal(TurnoStatus.EnAtencion, transition.States[1]);
-        Assert.Empty(transition.Items);
+        Assert.Equal(TurnoStatus.EnEspera, transition.States[1]);
+        Assert.Single(transition.Items);
     }
 
     [Fact]
@@ -64,6 +64,24 @@ public sealed class TurnosSnapshotBuilderTests
         Assert.Equal("Dr. Medico 2", result.Items[0].Medico);
         Assert.Equal(1, result.Items[0].PriorityTier);
         Assert.True(result.Items[0].IsMedicalExam);
+    }
+
+    [Fact]
+    public void ReadyMedicalExamCanBeCalledBeforeItsScheduledTime()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var now = new DateTime(2026, 9, 16, 9, 0, 0);
+        TurnoRaw[] raw =
+        [
+            new(1, "REGULAR", "C1", "Medico 1", now, now, "N", 20, null, null, false, true, "T", ConsultationId: 100),
+            new(2, "EMA", "C2", "Medico 2", now.AddHours(2), now, "N", 21, null, null, true, true, "T", ConsultationId: 101)
+        ];
+
+        var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(now, TimeSpan.Zero));
+
+        var active = Assert.Single(result.Items, item => item.IsActiveCall);
+        Assert.Equal("EMA", active.PublicId);
+        Assert.True(active.ShouldAnnounce);
     }
 
     [Fact]
@@ -115,12 +133,19 @@ public sealed class TurnosSnapshotBuilderTests
         var status = new TurnoStatusPolicy(new PrefacturaPolicy(ruleOptions), ruleOptions);
         return new TurnosSnapshotBuilder(
             status,
-            new PrefacturaPolicy(ruleOptions),
             new PriorityPolicy(
                 ruleOptions,
                 Microsoft.Extensions.Options.Options.Create(new PriorityOptions())),
-            new CalledTurnRotationPolicy(
-                Microsoft.Extensions.Options.Options.Create(new QueueOptions { CalledDisplaySeconds = 60 })),
+            new TurnosQueue(
+                Microsoft.Extensions.Options.Options.Create(new QueueOptions { CalledDisplaySeconds = 60 }),
+                Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }),
+                Microsoft.Extensions.Options.Options.Create(new ScheduleOptions
+                {
+                    MorningStartHour = 7,
+                    RecessStartHour = 12,
+                    AfternoonStartHour = 14,
+                    DayEndHour = 18
+                })),
             Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }));
     }
 }

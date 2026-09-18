@@ -8,6 +8,16 @@ La sede activa fue validada en `dbo.sistema`: `siscod=1` corresponde a `HOSPITAL
 
 Por autorizacion expresa del responsable del proyecto el 2026-09-16, el modo productivo usa `pacnam` como identificador visible. Esta decision debe revisarse si cambia el alcance publico o la politica de privacidad.
 
+El 2026-09-17 el responsable confirmó que la existencia de un acto médico abierto se reconoce por la relación `am_consulta.prfnum = citas.prfnum`. La consulta central obtiene, mediante una sola búsqueda acotada por cada cita de la jornada, `stacon`, `feccon`, `feccre` y `fecumv`; los conserva solo en la cola interna. `stacon` y las fechas no definen todavía una transición clínica. Antes de aumentar el límite de filas, el DBA debe confirmar un índice utilizable sobre `am_consulta.prfnum` (y preferiblemente la fecha usada para resolver duplicados).
+
+El 2026-09-18 se verificó mediante muestras anonimizadas y acotadas a 100 citas de Cuajone que `statte=N`, prefactura válida y `am_consulta.stacon=T` coinciden con actos abiertos; los casos `statte=S` observados tenían `stacon=P`. La tabla dispone del índice no único `ind_am_consulta_prfnum` sobre `prfnum`. El responsable confirmó formalmente que `T` significa acto abierto y `P` acto guardado/cerrado. Por tanto, el adaptador solo reconoce como acto habilitante un registro `T`; no basta la existencia histórica de cualquier registro para la prefactura.
+
+Una comprobación posterior del 2026-09-18 encontró, para el mismo `invnum` y `prfnum`, un `numcon` anterior en `P` y otro `numcon` posterior en `T`, mientras `citas.statte` permanecía en `S`. `am_consulta.numcon` es la clave primaria real. Esto confirma el flujo de reapertura: la prefactura se conserva, cada intento crea un `numcon` y el último acto prevalece sobre el estado histórico de la cita. La consulta une por `prfnum + invnum`, selecciona `TOP (1) ORDER BY feccon DESC, numcon DESC` sin filtrar previamente por `stacon`, y solo después interpreta `T` o `P`.
+
+En la misma fecha se validó la prioridad por observación sin exponer su texto al navegador: `EMA` tiene tier 1 y puede entrar a la selección antes de su hora programada; los códigos de amanecida de una letra o letra más `1` tienen tier 2; el resto queda en el tier normal. La consulta conserva el límite de filas y ordena las filas elegidas por esas prioridades antes de la hora programada.
+
+La consulta de producción conserva el límite de 100 filas y trabaja sobre una ventana horaria configurada. Desde el inicio del día hasta las 12:00 consulta la primera mitad; a partir de las 12:00 consulta la segunda mitad hasta finalizar la jornada. Así las citas de la tarde no quedan fuera por una acumulación de registros de la mañana.
+
 ## Protocolo previo
 
 1. Obtener autorizacion del DBA y ejecutar con una identidad que solo tenga `SELECT`.

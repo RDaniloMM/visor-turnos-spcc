@@ -11,7 +11,15 @@ public sealed record TurnoCandidate(
     bool IsMedicalExam,
     DateTimeOffset ScheduledAt,
     DateTimeOffset? ArrivedAt,
-    DateTimeOffset EligibilityTime)
+    DateTimeOffset EligibilityTime,
+    int? PrefacturaNumber = null,
+    bool HasMedicalConsultation = false,
+    string? ConsultationStatus = null,
+    DateTimeOffset? ConsultationConnectedAt = null,
+    DateTimeOffset? ConsultationCreatedAt = null,
+    DateTimeOffset? ConsultationLastModifiedAt = null,
+    long? ConsultationId = null,
+    int ConsultationAttemptCount = 0)
 {
     public string AreaKey => $"{Consultorio}\u001f{Medico}";
 }

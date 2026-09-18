@@ -15,10 +15,9 @@ public sealed class PriorityPolicy(
             return priorityOptions.Value.MedicalExamTier;
         }
 
-        if (turno.CitedTypeCode is not null &&
-            options.Value.PriorityTierByCitedType.TryGetValue(turno.CitedTypeCode, out var tier))
+        if (turno.IsAmanecida)
         {
-            return tier;
+            return priorityOptions.Value.AmanecidaTier;
         }
 
         return priorityOptions.Value.DefaultTier;

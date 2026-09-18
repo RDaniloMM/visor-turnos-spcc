@@ -11,4 +11,12 @@ public sealed record TurnoRaw(
     int? PrefacturaNumber,
     string? CitedTypeCode,
     string? PatientTypeCode,
-    bool IsMedicalExam);
+    bool IsMedicalExam,
+    bool HasMedicalConsultation = false,
+    string? ConsultationStatus = null,
+    DateTime? ConsultationConnectedAt = null,
+    DateTime? ConsultationCreatedAt = null,
+    DateTime? ConsultationLastModifiedAt = null,
+    bool IsAmanecida = false,
+    long? ConsultationId = null,
+    int ConsultationAttemptCount = 0);

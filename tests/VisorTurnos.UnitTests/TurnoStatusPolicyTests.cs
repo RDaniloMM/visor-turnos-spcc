@@ -8,7 +8,7 @@ namespace VisorTurnos.UnitTests;
 public sealed class TurnoStatusPolicyTests
 {
     [Fact]
-    public void ClosedStatusTakesPrecedenceOverPrefactura()
+    public void ClosedStatusWithoutANewerOpenActIsClosed()
     {
         var policy = CreatePolicy(zeroMeansAbsent: true);
         var turno = Raw(status: "S", prefactura: 42, arrived: DateTime.Today);
@@ -17,11 +17,53 @@ public sealed class TurnoStatusPolicyTests
     }
 
     [Fact]
-    public void ValidPrefacturaMeansEnAtencionWhenNotClosed()
+    public void LatestNumconInTReopensAnAppointmentEvenWhenStatteRemainsS()
+    {
+        var policy = CreatePolicy(zeroMeansAbsent: true);
+        var turno = Raw(status: "S", prefactura: 42, arrived: DateTime.Today) with
+        {
+            HasMedicalConsultation = true,
+            ConsultationStatus = "T",
+            ConsultationId = 15892579
+        };
+
+        Assert.Equal(TurnoStatus.EnEspera, policy.Normalize(turno, DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public void LatestNumconInPClosesTheAppointment()
+    {
+        var policy = CreatePolicy(zeroMeansAbsent: true);
+        var turno = Raw(status: "N", prefactura: 42, arrived: DateTime.Today) with
+        {
+            HasMedicalConsultation = true,
+            ConsultationStatus = "P",
+            ConsultationId = 15892429
+        };
+
+        Assert.Equal(TurnoStatus.Cerrado, policy.Normalize(turno, DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public void ValidPrefacturaAndMedicalConsultationMeansReadyToCall()
+    {
+        var policy = CreatePolicy(zeroMeansAbsent: true);
+        var raw = Raw("N", 42, DateTime.Today) with
+        {
+            HasMedicalConsultation = true,
+            ConsultationStatus = "T",
+            ConsultationId = 100
+        };
+
+        Assert.Equal(TurnoStatus.EnEspera, policy.Normalize(raw, DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public void PrefacturaWithoutMedicalConsultationIsNotCallEligible()
     {
         var policy = CreatePolicy(zeroMeansAbsent: true);
 
-        Assert.Equal(TurnoStatus.EnAtencion, policy.Normalize(Raw("N", 42, DateTime.Today), DateTimeOffset.Now));
+        Assert.Equal(TurnoStatus.Desconocido, policy.Normalize(Raw("N", 42, DateTime.Today), DateTimeOffset.Now));
     }
 
     [Theory]

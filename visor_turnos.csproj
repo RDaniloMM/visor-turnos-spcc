@@ -17,9 +17,12 @@
     <Compile Remove="tests\**\*.cs" />
     <Content Remove="tests\**\*" />
     <None Remove="tests\**\*" />
+    <Compile Remove="tools\**\*.cs" />
+    <Content Remove="tools\**\*" />
+    <None Remove="tools\**\*" />
   </ItemGroup>
 
-  <Target Name="BuildClientApp" BeforeTargets="Compile" Condition="'$(DesignTimeBuild)' != 'true'">
+  <Target Name="BuildClientApp" BeforeTargets="Compile" Condition="'$(DesignTimeBuild)' != 'true' AND '$(SkipClientAppBuild)' != 'true'">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)\ClientApp" Command="npm ci --no-audit --no-fund" />
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)\ClientApp" Command="npm run build" />
   </Target>

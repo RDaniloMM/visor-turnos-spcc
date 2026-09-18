@@ -13,7 +13,25 @@ public sealed class OdbcTurnosRepository(
     IOptions<BusinessRulesOptions> businessRulesOptions,
     IOptions<PriorityOptions> priorityOptions) : ITurnosRepository
 {
-    private const string Sql = """
+    internal const string Sql = """
+        WITH CitasDelDia AS
+        (
+            SELECT
+                c.invnum,
+                c.pacnam,
+                c.medcod,
+                c.codcon,
+                c.citdat,
+                c.cithll,
+                c.statte,
+                c.tcicod,
+                c.prfnum,
+                UPPER(LTRIM(RTRIM(REPLACE(COALESCE(c.obscit, ''), '"', '')))) AS observacion_normalizada
+            FROM dbo.citas AS c
+            WHERE c.siscod = ?
+              AND c.citdat >= ?
+              AND c.citdat < ?
+        )
         SELECT TOP (?)
             c.invnum,
             c.pacnam,
@@ -22,34 +40,61 @@ public sealed class OdbcTurnosRepository(
             c.cithll,
             c.statte,
             c.tcicod,
+            c.medcod,
             c.prfnum,
             CAST(CASE
-                WHEN LTRIM(RTRIM(c.obscit)) = ? THEN 1
+                WHEN c.observacion_normalizada = ? THEN 1
                 ELSE 0
             END AS bit) AS is_medical_exam,
+            CAST(CASE
+                WHEN c.observacion_normalizada LIKE '[A-Z]'
+                  OR c.observacion_normalizada LIKE '[A-Z]1' THEN 1
+                ELSE 0
+            END AS bit) AS is_amanecida,
             m.mednam,
-            co.descon
-        FROM dbo.citas AS c
+            co.descon,
+            ac.numcon,
+            ac.attempt_count,
+            ac.invnum AS consultation_invnum,
+            ac.prfnum AS consultation_prefactura_number,
+            ac.stacon,
+            ac.feccon,
+            ac.feccre,
+            ac.fecumv
+        FROM CitasDelDia AS c
         INNER JOIN dbo.medicos AS m
             ON m.medcod = c.medcod
         LEFT JOIN dbo.consultorios AS co
             ON co.codcon = m.codcon
-        WHERE c.siscod = ?
-          AND c.citdat >= ?
-          AND c.citdat < ?
-        ORDER BY CASE
-                    WHEN c.statte = ? THEN 2
-                    WHEN c.prfnum > 0 THEN 0
-                    WHEN c.cithll IS NOT NULL THEN 1
-                    ELSE 2
-                 END,
+        OUTER APPLY
+        (
+            SELECT TOP (1)
+                consultation.numcon,
+                COUNT(*) OVER () AS attempt_count,
+                consultation.invnum,
+                consultation.prfnum,
+                consultation.stacon,
+                consultation.feccon,
+                consultation.feccre,
+                consultation.fecumv
+            FROM dbo.am_consulta AS consultation
+            WHERE consultation.prfnum = c.prfnum
+              AND consultation.invnum = c.invnum
+            ORDER BY consultation.feccon DESC,
+                     consultation.numcon DESC
+        ) AS ac
+        WHERE c.citdat >= ?
+           OR c.observacion_normalizada = ?
+        ORDER BY CASE WHEN ac.stacon = 'T' THEN 0 ELSE 1 END,
+                 is_medical_exam DESC,
+                 is_amanecida DESC,
                  c.citdat,
                  c.invnum;
         """;
 
     public async Task<IReadOnlyList<TurnoRaw>> GetForDayAsync(
         int siteCode,
-        DateTime dayStart,
+        DateTime windowStart,
         DateTime dayEndExclusive,
         int maxRows,
         CancellationToken cancellationToken)
@@ -61,12 +106,14 @@ public sealed class OdbcTurnosRepository(
         command.CommandText = Sql;
         command.CommandType = CommandType.Text;
         command.CommandTimeout = queueOptions.Value.CommandTimeoutSeconds;
-        AddParameter(command, OdbcType.Int, Math.Min(maxRows, queueOptions.Value.MaxQueryRows));
-        AddParameter(command, OdbcType.VarChar, priorityOptions.Value.MedicalExamObservationCode, 20);
+        var medicalExamCode = priorityOptions.Value.MedicalExamObservationCode.Trim().ToUpperInvariant();
         AddParameter(command, OdbcType.Int, siteCode);
-        AddParameter(command, OdbcType.DateTime, dayStart);
+        AddParameter(command, OdbcType.DateTime, windowStart.Date);
         AddParameter(command, OdbcType.DateTime, dayEndExclusive);
-        AddParameter(command, OdbcType.VarChar, GetClosedStatusCode(), 2);
+        AddParameter(command, OdbcType.Int, Math.Min(maxRows, queueOptions.Value.MaxQueryRows));
+        AddParameter(command, OdbcType.VarChar, medicalExamCode, 20);
+        AddParameter(command, OdbcType.DateTime, windowStart);
+        AddParameter(command, OdbcType.VarChar, medicalExamCode, 20);
 
         var results = new List<TurnoRaw>();
         await using var reader = await command.ExecuteReaderAsync(
@@ -84,22 +131,33 @@ public sealed class OdbcTurnosRepository(
                 _ => null
             };
 
-            results.Add(new TurnoRaw(
-                stableId,
-                publicId,
-                ReadString(reader, 10) ?? ReadString(reader, 2) ?? "Por confirmar",
-                ReadString(reader, 9) ?? "Médico por confirmar",
-                reader.GetDateTime(3),
-                reader.IsDBNull(4) ? null : reader.GetDateTime(4),
-                ReadString(reader, 5),
-                reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                ReadString(reader, 6),
-                null,
-                !reader.IsDBNull(8) && reader.GetBoolean(8)));
+            results.Add(MapTurno(reader, stableId, publicId));
         }
 
         return results;
     }
+
+    internal static TurnoRaw MapTurno(DbDataReader reader, int stableId, string? publicId) =>
+        new(
+            stableId,
+            publicId,
+            ReadString(reader, 12) ?? ReadString(reader, 2) ?? "Por confirmar",
+            ReadString(reader, 11) ?? "Médico por confirmar",
+            reader.GetDateTime(3),
+            ReadDateTime(reader, 4),
+            ReadString(reader, 5),
+            reader.IsDBNull(8) ? null : reader.GetInt32(8),
+            ReadString(reader, 6),
+            null,
+            !reader.IsDBNull(9) && reader.GetBoolean(9),
+            !reader.IsDBNull(13),
+            ReadString(reader, 17),
+            ReadDateTime(reader, 18),
+            ReadDateTime(reader, 19),
+            ReadDateTime(reader, 20),
+            !reader.IsDBNull(10) && reader.GetBoolean(10),
+            reader.IsDBNull(13) ? null : reader.GetInt32(13),
+            reader.IsDBNull(14) ? 0 : reader.GetInt32(14));
 
     private static void AddParameter(OdbcCommand command, OdbcType type, object value, int? size = null)
     {
@@ -116,11 +174,7 @@ public sealed class OdbcTurnosRepository(
     private static string? ReadString(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal).Trim();
 
-    private string GetClosedStatusCode()
-    {
-        var closedStatusCode = businessRulesOptions.Value.ClosedStatusCodes
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-        return closedStatusCode?.Trim()
-            ?? throw new InvalidOperationException("No se configuro un estado cerrado para la consulta ODBC.");
-    }
+    private static DateTime? ReadDateTime(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetDateTime(ordinal);
+
 }

@@ -12,6 +12,9 @@ public sealed class PriorityOptions
     [Range(1, 99)]
     public int MedicalExamTier { get; init; } = 1;
 
-    [Range(2, 1000)]
+    [Range(2, 99)]
+    public int AmanecidaTier { get; init; } = 2;
+
+    [Range(3, 1000)]
     public int DefaultTier { get; init; } = 100;
 }

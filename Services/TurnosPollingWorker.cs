@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Data.Odbc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using VisorTurnos.Data;
@@ -35,9 +36,11 @@ public sealed class TurnosPollingWorker(
                 var localNow = TimeZoneInfo.ConvertTime(now, siteZone);
                 var dayStart = localNow.Date;
                 var dayEndExclusive = dayStart.AddDays(1);
+                var sessionSplit = dayStart.AddHours(queueOptions.Value.SessionSplitHour);
+                var windowStart = localNow.DateTime < sessionSplit ? dayStart : sessionSplit;
                 var rawItems = await repository.GetForDayAsync(
                     siteOptions.Value.Code,
-                    dayStart,
+                    windowStart,
                     dayEndExclusive,
                     queueOptions.Value.MaxQueryRows,
                     stoppingToken);
@@ -81,16 +84,36 @@ public sealed class TurnosPollingWorker(
             catch (Exception exception)
             {
                 consecutiveFailures++;
-                logger.LogError(
-                    exception,
-                    "Fallo de sondeo despues de {ElapsedMs} ms. Intento consecutivo {FailureCount}.",
-                    stopwatch.ElapsedMilliseconds,
-                    consecutiveFailures);
-                await PublishFailureStatusAsync(stoppingToken);
                 var backoffIndex = Math.Min(consecutiveFailures - 1, ErrorBackoffSeconds.Length - 1);
-                await Task.Delay(TimeSpan.FromSeconds(ErrorBackoffSeconds[backoffIndex]), stoppingToken);
+                var retryDelaySeconds = ErrorBackoffSeconds[backoffIndex];
+                logger.LogError(
+                    "Error al consultar LOLCLI; se reintentara en {RetryDelaySeconds} s. " +
+                    "Fallo consecutivo {FailureCount}; tipo {FailureType}; codigo {FailureCode}; " +
+                    "duracion {ElapsedMs} ms.",
+                    retryDelaySeconds,
+                    consecutiveFailures,
+                    exception.GetType().Name,
+                    GetFailureCode(exception),
+                    stopwatch.ElapsedMilliseconds);
+                await PublishFailureStatusAsync(stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(retryDelaySeconds), stoppingToken);
             }
         }
+    }
+
+    private static string GetFailureCode(Exception exception)
+    {
+        if (exception is not OdbcException odbcException)
+        {
+            return "n/a";
+        }
+
+        return string.Join(
+            ",",
+            odbcException.Errors
+                .Cast<OdbcError>()
+                .Select(error => $"{error.SQLState}/{error.NativeError}")
+                .Distinct(StringComparer.Ordinal));
     }
 
     private async Task PublishFailureStatusAsync(CancellationToken cancellationToken)

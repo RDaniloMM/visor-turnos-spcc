@@ -6,7 +6,7 @@ public interface ITurnosRepository
 {
     Task<IReadOnlyList<TurnoRaw>> GetForDayAsync(
         int siteCode,
-        DateTime dayStart,
+        DateTime windowStart,
         DateTime dayEndExclusive,
         int maxRows,
         CancellationToken cancellationToken);

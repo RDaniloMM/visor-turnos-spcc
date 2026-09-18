@@ -6,9 +6,8 @@ namespace VisorTurnos.Services;
 
 public sealed class TurnosSnapshotBuilder(
     TurnoStatusPolicy statusPolicy,
-    PrefacturaPolicy prefacturaPolicy,
     PriorityPolicy priorityPolicy,
-    CalledTurnRotationPolicy calledTurnRotationPolicy,
+    TurnosQueue turnosQueue,
     IOptions<SiteOptions> siteOptions)
 {
     private readonly TimeZoneInfo _siteTimeZone =
@@ -21,7 +20,6 @@ public sealed class TurnosSnapshotBuilder(
     {
         var states = new Dictionary<long, TurnoStatus>();
         var candidates = new List<TurnoCandidate>();
-        var closedTurns = new List<ClosedTurn>();
 
         foreach (var raw in rawItems)
         {
@@ -30,16 +28,6 @@ public sealed class TurnosSnapshotBuilder(
 
             var consultorio = string.IsNullOrWhiteSpace(raw.Consultorio) ? "Por confirmar" : raw.Consultorio.Trim();
             var medico = ToDoctorDisplayName(raw.Medico);
-            if (status == TurnoStatus.Cerrado)
-            {
-                if (prefacturaPolicy.Evaluate(raw.PrefacturaNumber) == PrefacturaPresence.Present)
-                {
-                    closedTurns.Add(new ClosedTurn(raw.StableId, $"{consultorio}\u001f{medico}"));
-                }
-
-                continue;
-            }
-
             if (string.IsNullOrWhiteSpace(raw.PublicId))
             {
                 continue;
@@ -58,7 +46,15 @@ public sealed class TurnosSnapshotBuilder(
                 raw.IsMedicalExam,
                 scheduled,
                 arrived,
-                arrived ?? scheduled));
+                arrived ?? scheduled,
+                raw.PrefacturaNumber,
+                raw.HasMedicalConsultation,
+                raw.ConsultationStatus,
+                raw.ConsultationConnectedAt.HasValue ? ToSiteOffset(raw.ConsultationConnectedAt.Value) : null,
+                raw.ConsultationCreatedAt.HasValue ? ToSiteOffset(raw.ConsultationCreatedAt.Value) : null,
+                raw.ConsultationLastModifiedAt.HasValue ? ToSiteOffset(raw.ConsultationLastModifiedAt.Value) : null,
+                raw.ConsultationId,
+                raw.ConsultationAttemptCount));
         }
 
         var orderedCandidates = candidates
@@ -70,7 +66,7 @@ public sealed class TurnosSnapshotBuilder(
             .ThenBy(item => item.StableId)
             .ToArray();
 
-        var activeCalls = calledTurnRotationPolicy.Select(orderedCandidates, closedTurns, now);
+        var activeCalls = turnosQueue.SynchronizeAndSelect(orderedCandidates, now);
         var activeCallIds = activeCalls
             .Where(selection => selection.StableId.HasValue)
             .Select(selection => selection.StableId!.Value)
@@ -80,8 +76,10 @@ public sealed class TurnosSnapshotBuilder(
             .Select(selection => selection.StableId!.Value)
             .ToHashSet();
         var items = orderedCandidates
-            .Where(item => item.Status != TurnoStatus.EnAtencion)
-            .Where(item => item.ScheduledAt >= now || activeCallIds.Contains(item.StableId))
+            .Where(item => item.Status != TurnoStatus.Cerrado)
+            .Where(item => item.ScheduledAt >= now ||
+                IsReadyForVoiceCall(item) ||
+                activeCallIds.Contains(item.StableId))
             .Select(item => new TurnoPublicoDto(
                 item.PublicId,
                 item.Consultorio,
@@ -115,4 +113,9 @@ public sealed class TurnosSnapshotBuilder(
             ? doctor
             : $"Dr. {doctor}";
     }
+
+    private static bool IsReadyForVoiceCall(TurnoCandidate item) =>
+        item.PrefacturaNumber is not null and not 0 &&
+        item.ConsultationId.HasValue &&
+        string.Equals(item.ConsultationStatus, "T", StringComparison.OrdinalIgnoreCase);
 }

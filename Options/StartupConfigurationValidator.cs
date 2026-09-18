@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using VisorTurnos.Services;
 
 namespace VisorTurnos.Options;
 
@@ -6,13 +7,16 @@ public sealed class StartupConfigurationValidator(
     IOptions<SiteOptions> siteOptions,
     IOptions<DataSourceOptions> dataSourceOptions,
     IOptions<BusinessRulesOptions> businessRulesOptions,
-    IConfiguration configuration)
+    IOptions<PriorityOptions> priorityOptions,
+    IConfiguration configuration,
+    IHostEnvironment environment)
 {
     public void Validate()
     {
         var site = siteOptions.Value;
         var source = dataSourceOptions.Value;
         var rules = businessRulesOptions.Value;
+        var priorities = priorityOptions.Value;
 
         try
         {
@@ -47,14 +51,38 @@ public sealed class StartupConfigurationValidator(
             failures.Add("BusinessRules:PublicIdentifierMode debe ser una fuente aprobada antes de activar ODBC.");
         }
 
-        if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("LolcliOdbc")))
+        if (priorities.MedicalExamTier >= priorities.AmanecidaTier ||
+            priorities.AmanecidaTier >= priorities.DefaultTier)
         {
-            failures.Add("ConnectionStrings:LolcliOdbc es obligatorio en modo ODBC.");
+            failures.Add("PriorityRules debe respetar EMA < Amanecida < otros turnos.");
         }
 
-        if (!string.Equals(source.OdbcDsn, "LOLCLI9000", StringComparison.OrdinalIgnoreCase))
+        if (source.Mode == TurnosSourceMode.DevelopmentSnapshot)
         {
-            failures.Add("DataSource:OdbcDsn debe ser LOLCLI9000.");
+            if (!environment.IsDevelopment())
+            {
+                failures.Add("DataSource:Mode=DevelopmentSnapshot solo se permite en entorno Development.");
+            }
+            if (!source.EnableDevelopmentSnapshot)
+            {
+                failures.Add("DataSource:EnableDevelopmentSnapshot debe ser true para usar la copia local.");
+            }
+            if (!DevelopmentSnapshotGuard.IsLocalSnapshotConnection(configuration.GetConnectionString("DevelopmentSnapshotOdbc")))
+            {
+                failures.Add("ConnectionStrings:DevelopmentSnapshotOdbc debe apuntar a LocalDB VisorTurnosDevelopment.");
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("LolcliOdbc")))
+            {
+                failures.Add("ConnectionStrings:LolcliOdbc es obligatorio en modo ODBC.");
+            }
+
+            if (!string.Equals(source.OdbcDsn, "LOLCLI9000", StringComparison.OrdinalIgnoreCase))
+            {
+                failures.Add("DataSource:OdbcDsn debe ser LOLCLI9000.");
+            }
         }
 
         if (failures.Count > 0)

@@ -13,7 +13,11 @@
 </head>
 <body data-stale-after-seconds="@Model.StaleAfterSeconds"
       data-max-visible-rows="@Model.MaxVisibleRows"
-      data-area-rotation-seconds="@Model.AreaRotationSeconds">
+      data-area-rotation-seconds="@Model.AreaRotationSeconds"
+      data-morning-start-hour="@Model.MorningStartHour"
+      data-recess-start-hour="@Model.RecessStartHour"
+      data-afternoon-start-hour="@Model.AfternoonStartHour"
+      data-day-end-hour="@Model.DayEndHour">
     <div class="tv-shell">
         <header class="topbar">
             <div class="brand" aria-label="Centro medico">
@@ -27,24 +31,25 @@
             </div>
             <div class="clock" aria-label="Fecha y hora actual">
                 <p id="current-date">--</p>
-                <time id="current-time">--:--</time>
+                <div class="clock-row">
+                    <span id="schedule-status" class="schedule-status" hidden></span>
+                    <time id="current-time">--:--</time>
+                </div>
             </div>
         </header>
-        <main>
-            <section id="callout" class="callout" aria-live="assertive">
+        <main id="turnos-main" class="main--no-callout">
+            <section id="callout" class="callout callout--idle" aria-live="assertive" hidden>
                 <div class="callout-copy">
                     <span id="called-label" class="callout-label">Llamando ahora</span>
                     <strong id="called-turn" class="called-patient">Preparando pantalla</strong>
-                    <span id="called-message">En breve mostraremos los turnos</span>
                 </div>
                 <div class="room-card">
-                    <span>Dirigirse a</span>
                     <strong id="called-room">—</strong>
                     <small id="called-doctor">—</small>
                 </div>
             </section>
             <div class="boards-grid">
-                <section class="board-panel area-panel" aria-labelledby="area-title">
+                <section id="area-panel" class="board-panel area-panel" aria-labelledby="area-title">
                     <div class="board-titlebar area-titlebar">
                         <div>
                             <p class="board-kicker">Rotación por área</p>
@@ -75,7 +80,7 @@
                         </div>
                     </div>
                     <div class="general-table-head" aria-hidden="true">
-                        <span>Paciente</span><span>Médico y consultorio</span><span>Estado</span>
+                        <span>Orden</span><span>Paciente</span><span>Consultorio y profesional</span><span>Estado</span>
                     </div>
                     <div id="general-list" class="board-list general-list" role="list" aria-live="polite"></div>
                     <div id="general-empty" class="empty-state" hidden>
@@ -85,6 +90,10 @@
                 </section>
             </div>
         </main>
+        <aside id="connection-status" class="connection connection--offline" role="status" aria-live="polite" hidden>
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span id="connection-text">Error de conexión</span>
+        </aside>
         <footer>
             <p>Espere a que su turno sea llamado antes de acercarse al consultorio.</p>
             <p id="freshness">Última actualización: --</p>

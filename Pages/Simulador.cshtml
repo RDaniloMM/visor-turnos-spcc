@@ -1,0 +1,129 @@
+@page "/simulador"
+@model SimuladorModel
+@{ Layout = null; }
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Simulador de acto médico</title>
+    <link rel="stylesheet" href="~/css/simulador.css" asp-append-version="true" />
+</head>
+<body>
+    <main class="sim-shell">
+        <header class="sim-header">
+            <div>
+                <p>Solo DevelopmentSnapshot · LocalDB</p>
+                <h1>Simulador de acto médico</h1>
+            </div>
+            <a href="/turnos">Ver pantalla pública</a>
+        </header>
+        <section class="sim-note">
+            <strong>Entorno de prueba local.</strong>
+            <span>Las acciones no escriben en LOLCLI. Espera hasta 3 segundos para que la pantalla pública reciba el cambio.</span>
+        </section>
+        <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+        <section class="sim-card sim-create-card" aria-labelledby="create-appointment-title">
+            <div class="sim-card-title">
+                <div>
+                    <p>Datos ficticios</p>
+                    <h2 id="create-appointment-title">Agregar cita de prueba</h2>
+                </div>
+            </div>
+            <form id="create-appointment-form"
+                  class="demo-appointment-form"
+                  data-morning-start-hour="@Model.MorningStartHour"
+                  data-recess-start-hour="@Model.RecessStartHour"
+                  data-afternoon-start-hour="@Model.AfternoonStartHour"
+                  data-day-end-hour="@Model.DayEndHour">
+                <label>
+                    Profesional y consultorio
+                    <select id="demo-medical-code" required aria-label="Profesional y consultorio para la cita ficticia"></select>
+                </label>
+                <label>
+                    Hora programada
+                    <input id="demo-scheduled-at" type="datetime-local" required />
+                </label>
+                <label>
+                    Prioridad
+                    <select id="demo-priority" required>
+                        <option value="normal">Normal</option>
+                        <option value="amanecida">Amanecida · mañana (A)</option>
+                        <option value="amanecida-tarde">Amanecida · tarde (A1)</option>
+                        <option value="ema">EMA · prioridad máxima</option>
+                    </select>
+                </label>
+                <button id="create-appointment" type="submit">Agregar cita ficticia</button>
+            </form>
+            <p class="demo-appointment-note">Se genera un paciente ficticio en LocalDB con <code>statte=N</code>, <code>prfnum=0</code> y sin <code>am_consulta</code>. Después usa <strong>Llamar</strong> para abrir su acto.</p>
+        </section>
+        <section class="sim-card" aria-labelledby="turnos-title">
+            <div class="sim-card-title">
+                <div>
+                    <p>Próximos pacientes</p>
+                    <h2 id="turnos-title">Colas de simulación</h2>
+                </div>
+                <div class="sim-controls">
+                    <span id="room-controls">
+                        <label for="room-filter">Consultorio</label>
+                        <select id="room-filter" aria-label="Seleccionar consultorio"></select>
+                    </span>
+                    <button id="refresh" type="button">Actualizar</button>
+                </div>
+            </div>
+            <div class="view-tabs" role="tablist" aria-label="Vistas del simulador">
+                <button id="detail-tab" class="view-tab" type="button" role="tab" aria-selected="true" aria-controls="detail-view">Detalle por consultorio</button>
+                <button id="ordered-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="ordered-view">Próximos por orden</button>
+            </div>
+            <section id="detail-view" class="sim-view" role="tabpanel" aria-labelledby="detail-tab">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>mednam</th><th>Consultorio</th><th>pacnam</th><th>citdat</th>
+                                <th>statte</th><th>obscit</th><th>prfnum</th><th>invnum</th><th>numcon</th>
+                                <th>stacon</th><th>feccon</th><th>feccre</th><th>fecumv</th><th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="turns"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="ordered-view" class="sim-view" role="tabpanel" aria-labelledby="ordered-tab" hidden>
+                <p class="ordered-note">Refleja la misma cola interna del servidor. Incluye los EMA vigentes de toda la jornada y respeta intentos, ausencias y vencimientos.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Posición área</th><th>mednam</th><th>Consultorio</th><th>pacnam</th><th>citdat</th><th>obscit</th><th>Estado real</th><th>prfnum</th><th>Acto</th><th>Acciones</th></tr>
+                        </thead>
+                        <tbody id="ordered-turns"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <section class="sim-card sim-queue-card" aria-labelledby="internal-queue-title">
+            <div class="sim-card-title">
+                <div>
+                    <p>Estado del servidor</p>
+                    <h2 id="internal-queue-title">Cola interna en vivo</h2>
+                </div>
+                <span id="queue-freshness" class="queue-freshness">Actualización cada 3 segundos</span>
+            </div>
+            <p class="ordered-note">Esta es la cola real mantenida en memoria por el visor. Cada numcon en T puede producir un solo ciclo de llamado; P/S libera el consultorio y una reapertura exige otro numcon.</p>
+            <div class="table-wrap queue-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Posición</th><th>Paciente</th><th>Consultorio y profesional</th>
+                            <th>Estado</th><th>Habilitado</th><th>Seguimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="internal-queue"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+    <script src="~/js/simulador.js" asp-append-version="true" defer></script>
+</body>
+</html>

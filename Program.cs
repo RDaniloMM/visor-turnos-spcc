@@ -27,6 +27,15 @@ builder.Services.AddOptions<QueueOptions>()
     .Bind(builder.Configuration.GetSection(QueueOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<ScheduleOptions>()
+    .Bind(builder.Configuration.GetSection(ScheduleOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options =>
+            options.MorningStartHour < options.RecessStartHour &&
+            options.RecessStartHour < options.AfternoonStartHour &&
+            options.AfternoonStartHour < options.DayEndHour,
+        "Schedule debe mantener el orden mañana < receso < tarde < fin de jornada.")
+    .ValidateOnStart();
 builder.Services.AddOptions<DataSourceOptions>()
     .Bind(builder.Configuration.GetSection(DataSourceOptions.SectionName))
     .ValidateDataAnnotations()
@@ -41,10 +50,12 @@ builder.Services.AddOptions<PriorityOptions>()
 
 builder.Services.AddSingleton<StartupConfigurationValidator>();
 builder.Services.AddSingleton<TurnosSnapshotStore>();
+builder.Services.AddSingleton<DevelopmentSnapshotGuard>();
+builder.Services.AddSingleton<DevelopmentSimulationRepository>();
 builder.Services.AddSingleton<PrefacturaPolicy>();
 builder.Services.AddSingleton<TurnoStatusPolicy>();
 builder.Services.AddSingleton<PriorityPolicy>();
-builder.Services.AddSingleton<CalledTurnRotationPolicy>();
+builder.Services.AddSingleton<TurnosQueue>();
 builder.Services.AddSingleton<TurnosSnapshotBuilder>();
 builder.Services.AddSingleton<TurnosChangeDetector>();
 builder.Services.AddSingleton<ITurnosRepository>(services =>
