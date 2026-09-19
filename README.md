@@ -9,7 +9,7 @@ Aplicacion ASP.NET Core Razor Pages para una pantalla de sala de espera. El serv
 - Las citas con `obscit=EMA` se clasifican como examen medico, reciben prioridad 1 y se distinguen visualmente sin exponer la observacion original.
 - Toda ejecucion usa exclusivamente el DSN ODBC `LOLCLI9000`, con sede fija `siscod=1` (Cuajone). Si la fuente no esta disponible, la pantalla conserva el ultimo snapshot real o indica que no puede actualizarse; nunca publica datos ficticios.
 - El adaptador ODBC usa solo lectura, rango diario indexable, limite de 100 filas, timeout de comando de 5 segundos y un unico worker de sondeo cada 3 segundos.
-- Cada llamado consume una sola apertura `am_consulta.numcon=T`. `P/S` libera el consultorio, pero el siguiente paciente requiere que el médico lo habilite en LOLCLI; una reapertura conserva la prefactura y genera otro `numcon`.
+- Cada llamado consume un `am_consulta.numcon` nuevo asociado por `invnum`; no espera la prefactura. `P/S` libera el consultorio, pero el siguiente paciente requiere que el médico lo habilite nuevamente en LOLCLI. La prefactura se conserva para el guardado/cierre del caso, no como requisito del aviso.
 - Por aprobacion expresa del responsable, el modo productivo usa `pacnam` como identificador visible. No se muestran historias clinicas, prefacturas ni observaciones crudas.
 
 ## Ejecucion local

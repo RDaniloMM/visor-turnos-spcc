@@ -17,7 +17,7 @@ public sealed class TurnoStatusPolicyTests
     }
 
     [Fact]
-    public void LatestNumconInTReopensAnAppointmentEvenWhenStatteRemainsS()
+    public void LatestNumconReopensAnAppointmentEvenWhenStatteRemainsS()
     {
         var policy = CreatePolicy(zeroMeansAbsent: true);
         var turno = Raw(status: "S", prefactura: 42, arrived: DateTime.Today) with
@@ -45,13 +45,13 @@ public sealed class TurnoStatusPolicyTests
     }
 
     [Fact]
-    public void ValidPrefacturaAndMedicalConsultationMeansReadyToCall()
+    public void NumconWithoutPrefacturaMeansReadyToCall()
     {
         var policy = CreatePolicy(zeroMeansAbsent: true);
-        var raw = Raw("N", 42, DateTime.Today) with
+        var raw = Raw("N", 0, DateTime.Today) with
         {
             HasMedicalConsultation = true,
-            ConsultationStatus = "T",
+            ConsultationStatus = null,
             ConsultationId = 100
         };
 

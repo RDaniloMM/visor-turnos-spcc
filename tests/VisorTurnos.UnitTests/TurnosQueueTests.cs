@@ -22,7 +22,7 @@ public sealed class TurnosQueueTests
     }
 
     [Fact]
-    public void RequiresANumconInTInAdditionToThePrefactura()
+    public void RequiresANumconBeforeItCanCall()
     {
         var queue = CreateQueue();
         var now = At(9, 0);
@@ -32,6 +32,20 @@ public sealed class TurnosQueueTests
             now);
 
         Assert.Empty(selection);
+    }
+
+    [Fact]
+    public void CallsANewNumconWithoutRequiringAPrefacturaOrInitialTStatus()
+    {
+        var queue = CreateQueue();
+        var now = At(9, 0);
+
+        var selection = queue.SynchronizeAndSelect(
+            [Candidate(1, now, TurnoStatus.EnEspera, prefactura: null, consultationId: 101, consultationStatus: null)],
+            now);
+
+        Assert.Equal(1, selection.Single().StableId);
+        Assert.True(selection.Single().ShouldAnnounce);
     }
 
     [Fact]

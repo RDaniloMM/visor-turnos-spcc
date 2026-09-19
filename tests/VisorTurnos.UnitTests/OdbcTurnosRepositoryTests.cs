@@ -17,7 +17,8 @@ public sealed class OdbcTurnosRepositoryTests
     {
         Assert.Contains("consultation.numcon", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("COUNT(*) OVER () AS attempt_count", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
-        Assert.Contains("AND consultation.invnum = c.invnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("WHERE consultation.invnum = c.invnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("consultation.prfnum = c.prfnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("ORDER BY consultation.feccon DESC", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.DoesNotContain("AND consultation.stacon = 'T'", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
     }

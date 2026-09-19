@@ -25,11 +25,11 @@ public sealed class TurnosSnapshotBuilderTests
     }
 
     [Fact]
-    public void TurnWithPrefacturaAndMedicalConsultationIsExposedAsReady()
+    public void TurnWithNumconAndNoPrefacturaIsExposedAsReady()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var at = new DateTime(2026, 9, 16, 9, 0, 0);
-        TurnoRaw[] raw = [new(1, "DEMO", "C1", "Medico", at, at, "N", 20, null, null, false, true, "T", ConsultationId: 100)];
+        TurnoRaw[] raw = [new(1, "DEMO", "C1", "Medico", at, at, "N", 0, null, null, false, true, null, ConsultationId: 100)];
 
         var transition = builder.Build(raw, new Dictionary<long, TurnoStatus> { [1] = TurnoStatus.EnEspera }, new DateTimeOffset(at, TimeSpan.Zero));
         Assert.Equal(TurnoStatus.EnEspera, transition.States[1]);
