@@ -38,6 +38,10 @@ public sealed class DevelopmentSimulationController(
     public Task<ActionResult<SimulationActionResultDto>> OpenMedicalAct(int invnum, CancellationToken cancellationToken) =>
         ExecuteAsync(() => repository.OpenMedicalActAsync(invnum, cancellationToken));
 
+    [HttpPost("{invnum:int}/crear-prefactura")]
+    public Task<ActionResult<SimulationActionResultDto>> CreatePrefactura(int invnum, CancellationToken cancellationToken) =>
+        ExecuteAsync(() => repository.CreatePrefacturaAsync(invnum, cancellationToken));
+
     [HttpPost("{invnum:int}/guardar-consulta")]
     public Task<ActionResult<SimulationActionResultDto>> SaveConsultation(int invnum, CancellationToken cancellationToken) =>
         ExecuteAsync(() => repository.SaveConsultationAsync(invnum, cancellationToken));

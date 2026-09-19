@@ -56,7 +56,7 @@
                 </label>
                 <button id="create-appointment" type="submit">Agregar cita ficticia</button>
             </form>
-            <p class="demo-appointment-note">Se genera un paciente ficticio en LocalDB con <code>statte=N</code>, <code>prfnum=0</code> y sin <code>am_consulta</code>. Después usa <strong>Llamar</strong> para abrir su acto.</p>
+            <p class="demo-appointment-note">Se genera un paciente ficticio en LocalDB con <code>statte=N</code>, <code>prfnum=0</code> y sin <code>am_consulta</code>. El flujo es: <strong>Llamar</strong>, <strong>Crear prefactura</strong> (opcional) y <strong>Guardar</strong>.</p>
         </section>
         <section class="sim-card" aria-labelledby="turnos-title">
             <div class="sim-card-title">
@@ -110,7 +110,7 @@
                 </div>
                 <span id="queue-freshness" class="queue-freshness">Actualización cada 3 segundos</span>
             </div>
-            <p class="ordered-note">Esta es la cola real mantenida en memoria por el visor. Cada numcon en T puede producir un solo ciclo de llamado; P/S libera el consultorio y una reapertura exige otro numcon.</p>
+            <p class="ordered-note">Esta es la cola real mantenida en memoria por el visor. Cada numcon nuevo puede producir un solo ciclo de llamado; P/S libera el consultorio y una reapertura exige otro numcon.</p>
             <div class="table-wrap queue-table-wrap">
                 <table>
                     <thead>

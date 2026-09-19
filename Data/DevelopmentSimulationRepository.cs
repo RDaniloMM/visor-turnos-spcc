@@ -120,12 +120,6 @@ public sealed class DevelopmentSimulationRepository(
     {
         await using var connection = await OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
-        var prefactura = await GetPrefacturaAsync(connection, transaction, invnum, cancellationToken);
-        if (!prefactura.HasValue || prefactura.Value == 0)
-        {
-            prefactura = await GetNextPrefacturaAsync(connection, transaction, cancellationToken);
-        }
-
         var alreadyOpen = await HasOpenMedicalActAsync(connection, transaction, invnum, cancellationToken);
         if (alreadyOpen)
         {
@@ -135,10 +129,9 @@ public sealed class DevelopmentSimulationRepository(
 
         var affected = await ExecuteAsync(connection, transaction, """
             UPDATE dbo.citas
-            SET prfnum = ?, statte = 'N'
-            WHERE invnum = ?
-              AND (prfnum IS NULL OR prfnum = 0 OR prfnum = ?);
-            """, cancellationToken, prefactura.Value, invnum, prefactura.Value);
+            SET statte = 'N'
+            WHERE invnum = ?;
+            """, cancellationToken, invnum);
         if (affected != 1)
         {
             transaction.Rollback();
@@ -150,11 +143,45 @@ public sealed class DevelopmentSimulationRepository(
         await ExecuteAsync(connection, transaction, """
             INSERT INTO dbo.am_consulta (numcon, invnum, prfnum, stacon, feccon, feccre, fecumv)
             VALUES (?, ?, ?, 'T', ?, ?, ?);
-            """, cancellationToken, consultationId, invnum, prefactura.Value, now, now, now);
+            """, cancellationToken, consultationId, invnum, 0, now, now, now);
         transaction.Commit();
         return new SimulationActionResultDto(
             true,
-            $"Acto médico {consultationId} creado. El nuevo numcon habilita el llamado; la prefactura {prefactura.Value} se conserva para poder guardar el caso.");
+            $"Acto médico {consultationId} creado. El nuevo numcon habilita el llamado; la prefactura es opcional en esta simulación.");
+    }
+
+    public async Task<SimulationActionResultDto> CreatePrefacturaAsync(int invnum, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+        if (!await HasOpenMedicalActAsync(connection, transaction, invnum, cancellationToken))
+        {
+            transaction.Rollback();
+            return new SimulationActionResultDto(false, "Primero abre el acto médico para crear la prefactura.");
+        }
+
+        var current = await GetPrefacturaAsync(connection, transaction, invnum, cancellationToken);
+        if (current is > 0)
+        {
+            transaction.Rollback();
+            return new SimulationActionResultDto(false, "La cita ya tiene una prefactura válida.");
+        }
+
+        var prefactura = await GetNextPrefacturaAsync(connection, transaction, cancellationToken);
+        var updated = await ExecuteAsync(connection, transaction, """
+            UPDATE dbo.citas
+            SET prfnum = ?
+            WHERE invnum = ?
+              AND (prfnum IS NULL OR prfnum = 0);
+            """, cancellationToken, prefactura, invnum);
+        if (updated != 1)
+        {
+            transaction.Rollback();
+            return new SimulationActionResultDto(false, "No se pudo crear la prefactura local.");
+        }
+
+        transaction.Commit();
+        return new SimulationActionResultDto(true, $"Prefactura {prefactura} creada en citas.prfnum.");
     }
 
     public async Task<SimulationActionResultDto> SaveConsultationAsync(int invnum, CancellationToken cancellationToken)

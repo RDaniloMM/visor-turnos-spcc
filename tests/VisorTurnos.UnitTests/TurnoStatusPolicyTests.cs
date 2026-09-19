@@ -31,10 +31,10 @@ public sealed class TurnoStatusPolicyTests
     }
 
     [Fact]
-    public void LatestNumconInPClosesTheAppointment()
+    public void LatestNumconInPClosesTheAppointmentOnlyWhenCitasIsAlsoClosed()
     {
         var policy = CreatePolicy(zeroMeansAbsent: true);
-        var turno = Raw(status: "N", prefactura: 42, arrived: DateTime.Today) with
+        var turno = Raw(status: "S", prefactura: 42, arrived: DateTime.Today) with
         {
             HasMedicalConsultation = true,
             ConsultationStatus = "P",
@@ -42,6 +42,20 @@ public sealed class TurnoStatusPolicyTests
         };
 
         Assert.Equal(TurnoStatus.Cerrado, policy.Normalize(turno, DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public void SavedMedicalActWithOpenAppointmentIsNotClassifiedAsClosed()
+    {
+        var policy = CreatePolicy(zeroMeansAbsent: true);
+        var turno = Raw(status: "N", prefactura: 0, arrived: DateTime.Today) with
+        {
+            HasMedicalConsultation = true,
+            ConsultationStatus = "P",
+            ConsultationId = 15892429
+        };
+
+        Assert.Equal(TurnoStatus.EnAtencion, policy.Normalize(turno, DateTimeOffset.Now));
     }
 
     [Fact]

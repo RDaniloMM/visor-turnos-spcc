@@ -17,10 +17,16 @@ public sealed class TurnoStatusPolicy(
         // numcon es la señal de que el médico seleccionó al paciente. No se
         // exige que la prefactura ya exista: el acto más reciente prevalece
         // sobre el estado histórico de citas mientras no haya sido guardado.
+        // Un acto P tampoco prueba, por sí solo, que la cita esté cerrada:
+        // se han observado combinaciones P/N con prfnum = 0. El cierre de la
+        // cita se confirma únicamente con el estado S de citas.
         if (turno.ConsultationId.HasValue &&
             string.Equals(consultationStatus, "P", StringComparison.OrdinalIgnoreCase))
         {
-            return TurnoStatus.Cerrado;
+            return !string.IsNullOrEmpty(rawStatus) &&
+                   options.Value.ClosedStatusCodes.Contains(rawStatus, StringComparer.OrdinalIgnoreCase)
+                ? TurnoStatus.Cerrado
+                : TurnoStatus.EnAtencion;
         }
 
         if (turno.ConsultationId.HasValue)
