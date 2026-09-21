@@ -19,7 +19,8 @@ public sealed record TurnoCandidate(
     DateTimeOffset? ConsultationCreatedAt = null,
     DateTimeOffset? ConsultationLastModifiedAt = null,
     long? ConsultationId = null,
-    int ConsultationAttemptCount = 0)
+    int ConsultationAttemptCount = 0,
+    bool IsAmanecida = false)
 {
     public string AreaKey => $"{Consultorio}\u001f{Medico}";
 }

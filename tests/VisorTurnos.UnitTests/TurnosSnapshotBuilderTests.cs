@@ -77,7 +77,8 @@ public sealed class TurnosSnapshotBuilderTests
             new(2, "EMA", "C2", "Medico 2", now.AddHours(2), now, "N", 21, null, null, true, true, "T", ConsultationId: 101)
         ];
 
-        var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(now, TimeSpan.Zero));
+        builder.Build([], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(now, TimeSpan.Zero));
+        var result = builder.Build(raw, new Dictionary<long, TurnoStatus>(), new DateTimeOffset(now.AddSeconds(3), TimeSpan.Zero));
 
         var active = Assert.Single(result.Items, item => item.IsActiveCall);
         Assert.Equal("EMA", active.PublicId);
@@ -115,16 +116,91 @@ public sealed class TurnosSnapshotBuilderTests
     }
 
     [Fact]
-    public void PendingPatientIsHiddenAfterTheirScheduledMinute()
+    public void PastScheduledPatientMovesAfterTheUpcomingAppointmentsWithoutBeingDeleted()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var scheduled = new DateTime(2026, 9, 16, 9, 0, 0);
         var result = builder.Build(
-            [new TurnoRaw(1, "PENDIENTE", "C1", "Medico", scheduled, scheduled, "N", null, null, null, false)],
+            [
+                new TurnoRaw(1, "VENCIDO-ANTERIOR", "C1", "Medico", scheduled, null, "N", null, null, null, false),
+                new TurnoRaw(2, "VENCIDO-RECIENTE", "C1", "Medico", scheduled.AddMinutes(20), null, "N", null, null, null, false),
+                new TurnoRaw(3, "PROXIMO", "C1", "Medico", scheduled.AddHours(1).AddMinutes(15), null, "N", null, null, null, false)
+            ],
             new Dictionary<long, TurnoStatus>(),
             new DateTimeOffset(scheduled.AddMinutes(30), TimeSpan.Zero));
 
-        Assert.Empty(result.Items);
+        Assert.Equal(["VENCIDO-RECIENTE", "VENCIDO-ANTERIOR", "PROXIMO"], result.Items.Select(item => item.PublicId));
+    }
+
+    [Fact]
+    public void CurrentHourAppointmentsPrecedeTheNextHourAndEarlierHourBlocks()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var at = new DateTime(2026, 9, 16, 9, 38, 0);
+        var result = builder.Build(
+            [
+                new TurnoRaw(1, "OCHO-QUINCE", "C1", "Medico", at.AddHours(-1).AddMinutes(-23), null, "N", null, null, null, false),
+                new TurnoRaw(2, "DIEZ", "C1", "Medico", at.AddMinutes(22), null, "N", null, null, null, false),
+                new TurnoRaw(3, "NUEVE-QUINCE", "C1", "Medico", at.AddMinutes(-23), null, "N", null, null, null, false),
+                new TurnoRaw(4, "NUEVE-TREINTA", "C1", "Medico", at.AddMinutes(-8), null, "N", null, null, null, false)
+            ],
+            new Dictionary<long, TurnoStatus>(),
+            new DateTimeOffset(at, TimeSpan.Zero));
+
+        Assert.Equal(["NUEVE-TREINTA", "NUEVE-QUINCE", "DIEZ", "OCHO-QUINCE"], result.Items.Select(item => item.PublicId));
+    }
+
+    [Fact]
+    public void CalledPatientWithoutRegisteredArrivalIsRemovedFromThePublicUpcomingListsAfterTheMinute()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var scheduled = new DateTime(2026, 9, 16, 9, 0, 0);
+        var raw = new TurnoRaw(
+            1, "AUSENTE", "C1", "Medico", scheduled, null, "N", 0, null, null, false,
+            HasMedicalConsultation: true,
+            ConsultationStatus: "T",
+            ConsultationId: 100);
+
+        // La primera lectura es la línea base; el acto creado después inicia
+        // el llamado y aún aparece durante sus 60 segundos reglamentarios.
+        builder.Build([], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled, TimeSpan.Zero));
+        var duringCall = builder.Build([raw], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled.AddSeconds(3), TimeSpan.Zero));
+        var afterNoShow = builder.Build([raw], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled.AddSeconds(63), TimeSpan.Zero));
+
+        Assert.Single(duringCall.Items);
+        Assert.Empty(afterNoShow.Items);
+    }
+
+    [Fact]
+    public void NewOpenNumconCanReactivateAndCallAnAppointmentPreviouslyClosedInLolcli()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var at = new DateTime(2026, 9, 21, 11, 30, 0);
+        var closed = new TurnoRaw(
+            1, "REACTIVABLE", "C1", "Medico", at, at, "S", 0, null, null, false,
+            HasMedicalConsultation: true,
+            ConsultationStatus: "P",
+            ConsultationId: 100);
+        var reopenedByDoctor = closed with
+        {
+            // El médico abre nuevamente al paciente en LOLCLI. La cita puede
+            // conservar S de forma temporal, pero el numcon nuevo T manda.
+            ConsultationStatus = "T",
+            ConsultationId = 101
+        };
+
+        var beforeReopen = builder.Build([closed], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
+        var afterReopen = builder.Build(
+            [reopenedByDoctor],
+            beforeReopen.States,
+            new DateTimeOffset(at.AddSeconds(3), TimeSpan.Zero));
+
+        Assert.Empty(beforeReopen.Items);
+        var called = Assert.Single(afterReopen.Items);
+        Assert.Equal("REACTIVABLE", called.PublicId);
+        Assert.Equal("en-espera", called.Estado);
+        Assert.True(called.IsActiveCall);
+        Assert.True(called.ShouldAnnounce);
     }
 
     private static TurnosSnapshotBuilder CreateBuilder(BusinessRulesOptions rules)

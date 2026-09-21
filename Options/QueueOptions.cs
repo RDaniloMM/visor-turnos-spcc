@@ -10,6 +10,7 @@ public sealed class QueueOptions
     [Range(1, 60)] public int CommandTimeoutSeconds { get; init; } = 5;
     [Range(5, 3600)] public int StaleAfterSeconds { get; init; } = 15;
     [Range(1, 500)] public int MaxQueryRows { get; init; } = 100;
+    [Range(50, 5000)] public int RecentConsultationRows { get; init; } = 500;
     [Range(1, 12)] public int MaxVisibleRows { get; init; } = 8;
     [Range(1, 23)] public int SessionSplitHour { get; init; } = 12;
     [Range(3, 60)] public int AreaRotationSeconds { get; init; } = 8;

@@ -21,6 +21,7 @@ public sealed class TurnosChangeDetector
                 .Append('\u001f').Append(item.PriorityTier)
                 .Append('\u001f').Append(item.IsPreferential)
                 .Append('\u001f').Append(item.IsMedicalExam)
+                .Append('\u001f').Append(item.IsAmanecida)
                 .Append('\u001f').Append(item.ScheduledAt?.ToUnixTimeMilliseconds())
                 .Append('\u001f').Append(item.ArrivedAt?.ToUnixTimeMilliseconds())
                 .Append('\u001f').Append(item.ShouldAnnounce)

@@ -32,7 +32,6 @@
             <div class="clock" aria-label="Fecha y hora actual">
                 <p id="current-date">--</p>
                 <div class="clock-row">
-                    <span id="schedule-status" class="schedule-status" hidden></span>
                     <time id="current-time">--:--</time>
                 </div>
             </div>
@@ -67,8 +66,8 @@
                     </div>
                     <div id="area-list" class="board-list area-list" role="list" aria-live="polite"></div>
                     <div id="area-empty" class="empty-state" hidden>
-                        <strong>No hay próximos turnos</strong>
-                        <span>Las áreas aparecerán automáticamente.</span>
+                        <strong>Esperando habilitación médica</strong>
+                        <span>El consultorio aparecerá cuando se genere un nuevo acto.</span>
                     </div>
                 </section>
 
@@ -84,8 +83,8 @@
                     </div>
                     <div id="general-list" class="board-list general-list" role="list" aria-live="polite"></div>
                     <div id="general-empty" class="empty-state" hidden>
-                        <strong>No hay turnos para mostrar</strong>
-                        <span>La pantalla se actualizará automáticamente.</span>
+                        <strong>No hay próximos turnos en esta jornada</strong>
+                        <span>La siguiente agenda se mostrará en su horario correspondiente.</span>
                     </div>
                 </section>
             </div>

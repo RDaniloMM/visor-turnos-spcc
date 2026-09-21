@@ -4,7 +4,7 @@ Ultima revision: 2026-09-18.
 
 ## Principio rector
 
-El visor no inicia actos médicos ni escribe en LOLCLI. El médico selecciona al paciente en LOLCLI y ese acto crea un registro en `am_consulta`. La aparición de un `numcon` nuevo, relacionado con la cita por `invnum`, es la señal que habilita un llamado.
+El visor no inicia actos médicos ni escribe en LOLCLI. El médico selecciona al paciente en LOLCLI y ese acto crea un registro en `am_consulta`. La aparición de un `numcon` nuevo es la señal que habilita un llamado únicamente si está relacionado por `invnum` con una cita programada de la sede y jornada actual en `citas`.
 
 `prfnum` no es requisito para anunciar. El médico lo crea explícitamente en LOLCLI mediante **Crear prefactura** y **Aceptar**; esa operación actualiza `citas.prfnum`. Es un dato administrativo de la cita, pero no decide si la TV debe llamar al paciente ni prueba por sí solo que el acto o la cita estén cerrados.
 
@@ -23,13 +23,13 @@ La consulta toma únicamente el último acto de cada cita: `TOP (1)` ordenado po
 ## Secuencia normal
 
 1. El médico revisa su lista de LOLCLI y decide qué paciente atender según la prioridad clínica.
-2. Al seleccionar al paciente, LOLCLI crea un nuevo `am_consulta.numcon`.
-3. El sondeo central detecta el nuevo `numcon` en un máximo aproximado de tres segundos.
+2. La cita debe existir en `citas` para Cuajone y la jornada actual. Al seleccionar ese paciente, LOLCLI crea un nuevo `am_consulta.numcon`.
+3. Al arrancar, el visor toma una línea base silenciosa de los `numcon` ya existentes. El sondeo central solo considera habilitante un identificador distinto detectado después de esa línea base, normalmente en un máximo de tres segundos.
 4. Si no hay otro anuncio en curso, la TV muestra el banner, pronuncia el llamado y marca al paciente como `Llamando`.
 5. A los 30 segundos se realiza una única repetición de voz.
 6. A los 60 segundos termina banner y voz. Ese `numcon` queda consumido: no se reutiliza para un segundo ciclo.
 7. El médico puede crear y aceptar una prefactura en LOLCLI; esto actualiza `citas.prfnum`, pero no es condición del aviso. En el flujo confirmado de cierre, el último acto pasa a `P` y la cita a `S`; la combinación `P/S` confirma el término. El visor no llama al siguiente por su cuenta.
-8. Para llamar a otro paciente, el médico vuelve a seleccionarlo en LOLCLI, creando otro `numcon`.
+8. Para llamar a otro paciente, el médico vuelve a seleccionarlo en LOLCLI, creando otro `numcon`. Si previamente guardó/cerró una cita, puede reabrirla desde LOLCLI cuando la atención lo requiera: el nuevo `numcon` abierto prevalece para el visor y autoriza un nuevo llamado. El visor nunca reabre una cita por su cuenta.
 
 ## Paciente ausente y reintentos
 
@@ -49,9 +49,11 @@ Puede haber varios médicos que creen actos al mismo tiempo, pero la televisión
 
 Las prioridades ordenan únicamente pacientes que el médico ya habilitó con un `numcon`; la TV no crea actos ni adelanta por sí sola una cita sin acto médico.
 
+Un reinicio del visor no debe repetir anuncios: los actos que ya estaban abiertos cuando inició el proceso permanecen como referencia, pero no provocan voz. Para emitir un nuevo llamado, LOLCLI debe registrar otro `numcon`.
+
 ## Ventanas y visibilidad
 
-El sondeo trabaja por sede fija Cuajone (`siscod = 1`) y por jornada. Antes de las 12:00 consulta la ventana de mañana; desde las 12:00, la ventana de tarde. La pantalla pública muestra citas vigentes y actos habilitados; no exhibe cerrados ni datos técnicos.
+El sondeo trabaja por sede fija Cuajone (`siscod = 1`) y por jornada. La pantalla pública no exhibe cerrados (`P/S`) ni datos técnicos. El panel **Próximos turnos** muestra citas agendadas abiertas cuya `citdat` aún no haya pasado y pertenezca a la jornada vigente: mañana desde las 07:00 hasta antes de las 12:00, y tarde desde las 14:00 hasta antes de las 18:00. Durante el receso no anticipa citas de la tarde. No filtra por `obscit` y ordena ascendentemente por hora. Una cita vencida no se elimina de LOLCLI ni pierde la posibilidad de que el médico la abra manualmente; simplemente deja de presentarse como próxima. EMA y amanecida solo intervienen al priorizar actos que el médico ya habilitó para un llamado; no cambian el orden de esta agenda pública.
 
 Solo hay dos estados públicos: `Llamando` y `Próximo`. `numcon`, `prfnum`, `stacon`, intentos y ausencias son visibles únicamente en `/simulador` cuando se ejecuta en `DevelopmentSnapshot`.
 

@@ -9,17 +9,21 @@ public sealed class OdbcTurnosRepositoryTests
     public void Sql_ReadsFromFilteredCte()
     {
         Assert.Contains("FROM CitasDelDia AS c", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("WHERE c.siscod = ?", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("LEFT JOIN UltimoActoPorCita AS ac", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.DoesNotContain("FROM dbo.citas AS c\n        INNER JOIN", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Sql_SelectsTheLatestActWithoutFilteringOutPBeforeOrdering()
+    public void Sql_ReadsOnlyRecentActsAndSelectsTheLatestOnePerAppointment()
     {
         Assert.Contains("consultation.numcon", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
-        Assert.Contains("COUNT(*) OVER () AS attempt_count", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
-        Assert.Contains("WHERE consultation.invnum = c.invnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("ActosRecientes", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("SELECT TOP (?)", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("COUNT(*) OVER (PARTITION BY consultation.invnum) AS attempt_count", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("ROW_NUMBER() OVER", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("ON ac.invnum = c.invnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.DoesNotContain("consultation.prfnum = c.prfnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
-        Assert.Contains("ORDER BY consultation.feccon DESC", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.DoesNotContain("AND consultation.stacon = 'T'", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
     }
 

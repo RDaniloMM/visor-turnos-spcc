@@ -31,6 +31,38 @@ public sealed class OdbcTurnosRepository(
             WHERE c.siscod = ?
               AND c.citdat >= ?
               AND c.citdat < ?
+        ),
+        ActosRecientes AS
+        (
+            -- numcon es la clave secuencial del acto. Limitar la lectura a
+            -- los últimos registros evita una búsqueda por invnum sobre toda
+            -- am_consulta en cada sondeo.
+            SELECT TOP (?)
+                consultation.numcon,
+                consultation.invnum,
+                consultation.prfnum,
+                consultation.stacon,
+                consultation.feccon,
+                consultation.feccre,
+                consultation.fecumv
+            FROM dbo.am_consulta AS consultation
+            ORDER BY consultation.numcon DESC
+        ),
+        UltimoActoPorCita AS
+        (
+            SELECT
+                consultation.numcon,
+                COUNT(*) OVER (PARTITION BY consultation.invnum) AS attempt_count,
+                consultation.invnum,
+                consultation.prfnum,
+                consultation.stacon,
+                consultation.feccon,
+                consultation.feccre,
+                consultation.fecumv,
+                ROW_NUMBER() OVER (
+                    PARTITION BY consultation.invnum
+                    ORDER BY consultation.numcon DESC) AS act_rank
+            FROM ActosRecientes AS consultation
         )
         SELECT TOP (?)
             c.invnum,
@@ -47,8 +79,12 @@ public sealed class OdbcTurnosRepository(
                 ELSE 0
             END AS bit) AS is_medical_exam,
             CAST(CASE
-                WHEN c.observacion_normalizada LIKE '[A-Z]'
-                  OR c.observacion_normalizada LIKE '[A-Z]1' THEN 1
+                -- No usar rangos como [A-Z]: la intercalacion de LOLCLI no
+                -- los evalua de forma consistente. Los codigos acordados se
+                -- comparan de forma literal, despues de quitar comillas y
+                -- espacios de obscit.
+                WHEN c.observacion_normalizada IN
+                    ('A', 'B', 'C', 'D', 'E', 'A1', 'B1', 'C1', 'D1', 'E1') THEN 1
                 ELSE 0
             END AS bit) AS is_amanecida,
             m.mednam,
@@ -66,24 +102,16 @@ public sealed class OdbcTurnosRepository(
             ON m.medcod = c.medcod
         LEFT JOIN dbo.consultorios AS co
             ON co.codcon = m.codcon
-        OUTER APPLY
-        (
-            SELECT TOP (1)
-                consultation.numcon,
-                COUNT(*) OVER () AS attempt_count,
-                consultation.invnum,
-                consultation.prfnum,
-                consultation.stacon,
-                consultation.feccon,
-                consultation.feccre,
-                consultation.fecumv
-            FROM dbo.am_consulta AS consultation
-            WHERE consultation.invnum = c.invnum
-            ORDER BY consultation.feccon DESC,
-                     consultation.numcon DESC
-        ) AS ac
+        LEFT JOIN UltimoActoPorCita AS ac
+            ON ac.invnum = c.invnum
+           AND ac.act_rank = 1
         WHERE c.citdat >= ?
            OR c.observacion_normalizada = ?
+           -- Un médico puede abrir un acto después de la hora programada.
+           -- El numcon vigente debe llegar al worker para que este detecte
+           -- el evento; la cola evita anunciar actos que ya existían al
+           -- inicio del proceso.
+           OR (ac.numcon IS NOT NULL AND (ac.stacon IS NULL OR ac.stacon <> 'P'))
         ORDER BY CASE WHEN ac.numcon IS NOT NULL AND (ac.stacon IS NULL OR ac.stacon <> 'P') THEN 0 ELSE 1 END,
                  is_medical_exam DESC,
                  is_amanecida DESC,
@@ -109,6 +137,7 @@ public sealed class OdbcTurnosRepository(
         AddParameter(command, OdbcType.Int, siteCode);
         AddParameter(command, OdbcType.DateTime, windowStart.Date);
         AddParameter(command, OdbcType.DateTime, dayEndExclusive);
+        AddParameter(command, OdbcType.Int, queueOptions.Value.RecentConsultationRows);
         AddParameter(command, OdbcType.Int, Math.Min(maxRows, queueOptions.Value.MaxQueryRows));
         AddParameter(command, OdbcType.VarChar, medicalExamCode, 20);
         AddParameter(command, OdbcType.DateTime, windowStart);

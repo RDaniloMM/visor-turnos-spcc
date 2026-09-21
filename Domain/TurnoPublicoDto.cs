@@ -11,4 +11,5 @@ public sealed record TurnoPublicoDto(
     DateTimeOffset? ScheduledAt,
     DateTimeOffset? ArrivedAt,
     bool ShouldAnnounce,
-    bool IsActiveCall = false);
+    bool IsActiveCall = false,
+    bool IsAmanecida = false);

@@ -54,7 +54,8 @@ public sealed class TurnosSnapshotBuilder(
                 raw.ConsultationCreatedAt.HasValue ? ToSiteOffset(raw.ConsultationCreatedAt.Value) : null,
                 raw.ConsultationLastModifiedAt.HasValue ? ToSiteOffset(raw.ConsultationLastModifiedAt.Value) : null,
                 raw.ConsultationId,
-                raw.ConsultationAttemptCount));
+                raw.ConsultationAttemptCount,
+                raw.IsAmanecida));
         }
 
         var orderedCandidates = candidates
@@ -75,11 +76,27 @@ public sealed class TurnosSnapshotBuilder(
             .Where(selection => selection.ShouldAnnounce && selection.StableId.HasValue)
             .Select(selection => selection.StableId!.Value)
             .ToHashSet();
-        var items = orderedCandidates
+        var deferredAbsentIds = turnosQueue.GetDeferredAbsentAppointmentIds();
+        var publicCandidates = orderedCandidates
             .Where(item => item.Status != TurnoStatus.Cerrado)
-            .Where(item => item.ScheduledAt >= now ||
-                IsReadyForVoiceCall(item) ||
-                activeCallIds.Contains(item.StableId))
+            // Tras los dos avisos, una persona que no tiene llegada registrada
+            // conserva su cita internamente al final de la cola, pero deja de
+            // bloquear el listado público de próximos turnos.
+            .Where(item => !deferredAbsentIds.Contains(item.StableId))
+            // La agenda no pierde citas vencidas: permanecen al final de la
+            // jornada. Las próximas según citdat se muestran primero para no
+            // confundir la lista pública con un registro de ausencias.
+            .ToArray();
+
+        // Se mantiene primero la prioridad clínica. Dentro de cada prioridad,
+        // la TV prioriza el bloque horario en curso: a las 09:38 las 09:xx
+        // aparecen antes que 10:xx y que bloques anteriores como 08:xx.
+        var items = publicCandidates
+            .OrderBy(item => item.PriorityTier)
+            .ThenByDescending(item => item.IsPreferential)
+            .ThenBy(item => GetTimeBlock(item, now))
+            .ThenBy(item => GetTimeOrder(item, now))
+            .ThenBy(item => item.StableId)
             .Select(item => new TurnoPublicoDto(
                 item.PublicId,
                 item.Consultorio,
@@ -94,7 +111,8 @@ public sealed class TurnosSnapshotBuilder(
                     previous == TurnoStatus.EnEspera &&
                     item.Status == TurnoStatus.EnAtencion) ||
                 announcementIds.Contains(item.StableId),
-                activeCallIds.Contains(item.StableId)))
+                activeCallIds.Contains(item.StableId),
+                item.IsAmanecida))
             .ToArray();
 
         return new TurnosBuildResult(items, states);
@@ -114,7 +132,23 @@ public sealed class TurnosSnapshotBuilder(
             : $"Dr. {doctor}";
     }
 
-    private static bool IsReadyForVoiceCall(TurnoCandidate item) =>
-        item.ConsultationId.HasValue &&
-        !string.Equals(item.ConsultationStatus, "P", StringComparison.OrdinalIgnoreCase);
+    private static bool IsPastScheduled(TurnoCandidate item, DateTimeOffset now) =>
+        item.ScheduledAt < now;
+
+    private static bool IsInCurrentHour(TurnoCandidate item, DateTimeOffset now) =>
+        item.ScheduledAt.Year == now.Year &&
+        item.ScheduledAt.Month == now.Month &&
+        item.ScheduledAt.Day == now.Day &&
+        item.ScheduledAt.Hour == now.Hour;
+
+    private static int GetTimeBlock(TurnoCandidate item, DateTimeOffset now) =>
+        IsInCurrentHour(item, now) ? 0 :
+        IsPastScheduled(item, now) ? 2 : 1;
+
+    private static long GetTimeOrder(TurnoCandidate item, DateTimeOffset now) =>
+        // Hora actual y bloques vencidos: más reciente primero. Horas futuras:
+        // la más cercana primero.
+        GetTimeBlock(item, now) == 1
+            ? item.ScheduledAt.ToUnixTimeMilliseconds()
+            : -item.ScheduledAt.ToUnixTimeMilliseconds();
 }

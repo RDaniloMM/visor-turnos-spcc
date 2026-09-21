@@ -8,7 +8,6 @@ const required = (id) => {
 const siteName = required("site-name");
 const currentDate = required("current-date");
 const currentTime = required("current-time");
-const scheduleStatus = required("schedule-status");
 const connectionStatus = document.getElementById("connection-status");
 const connectionText = document.getElementById("connection-text");
 const turnosMain = required("turnos-main");
@@ -48,7 +47,29 @@ let hubConnected = false;
 let areaSlides = [];
 let areaSlideIndex = 0;
 let areaTimer = null;
+let waitingMessageIndex = 0;
+let waitingMessageTimer = null;
 let lastConnectionNotice = "";
+const waitingMessages = [
+    {
+        label: "Bienvenidos",
+        headline: "Su atención está por comenzar",
+        context: "Hospital SPCC Cuajone",
+        detail: "Gracias por su paciencia"
+    },
+    {
+        label: "Atención ordenada",
+        headline: "Acérquese al consultorio solo cuando aparezca su nombre",
+        context: "Aviso visual y sonoro",
+        detail: "Espere el llamado de su turno"
+    },
+    {
+        label: "Atención con respeto",
+        headline: "Respetemos el orden de atención y los casos prioritarios",
+        context: "Sala de espera",
+        detail: "Nuestro equipo está preparado para atenderle"
+    }
+];
 const dateFormatter = new Intl.DateTimeFormat("es-PE", { weekday: "long", day: "2-digit", month: "long" });
 const timeFormatter = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const shortTimeFormatter = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -57,19 +78,6 @@ function tickClock() {
     currentDate.textContent = dateFormatter.format(now);
     currentTime.textContent = timeFormatter.format(now);
     currentTime.dateTime = now.toISOString();
-    const hour = now.getHours();
-    const schedule = hour >= morningStartHour && hour < recessStartHour
-        ? { label: "Turno mañana", css: "morning" }
-        : hour >= recessStartHour && hour < afternoonStartHour
-            ? { label: "Receso", css: "recess" }
-            : hour >= afternoonStartHour && hour < dayEndHour
-                ? { label: "Turno tarde", css: "afternoon" }
-                : null;
-    scheduleStatus.hidden = schedule === null;
-    scheduleStatus.textContent = schedule?.label ?? "";
-    scheduleStatus.className = schedule === null
-        ? "schedule-status"
-        : `schedule-status schedule-status--${schedule.css}`;
     updateHealthIndicator();
 }
 function isPublicTurn(value) {
@@ -79,7 +87,9 @@ function isPublicTurn(value) {
     return typeof item.publicId === "string" && typeof item.consultorio === "string" &&
         typeof item.medico === "string" && typeof item.estado === "string" &&
         typeof item.priorityTier === "number" && typeof item.isPreferential === "boolean" &&
-        typeof item.isMedicalExam === "boolean" && typeof item.shouldAnnounce === "boolean";
+        typeof item.isMedicalExam === "boolean" &&
+        (typeof item.isAmanecida === "undefined" || typeof item.isAmanecida === "boolean") &&
+        typeof item.shouldAnnounce === "boolean";
 }
 function isSnapshot(value) {
     if (typeof value !== "object" || value === null)
@@ -169,6 +179,7 @@ function createGeneralRow(item, position) {
     const row = document.createElement("div");
     row.className = "general-row";
     row.classList.toggle("general-row--active", item.isActiveCall);
+    row.classList.toggle("general-row--next", position === 1 && !item.isActiveCall);
     row.setAttribute("role", "listitem");
     row.setAttribute("aria-label", `Turno ${position}: ${item.publicId}`);
     const number = document.createElement("span");
@@ -177,6 +188,12 @@ function createGeneralRow(item, position) {
     number.setAttribute("aria-hidden", "true");
     const turnCell = document.createElement("span");
     turnCell.className = "turn-cell";
+    if (position === 1 && !item.isActiveCall) {
+        const nextCue = document.createElement("span");
+        nextCue.className = "next-cue";
+        nextCue.textContent = "Siguiente en agenda";
+        turnCell.append(nextCue);
+    }
     const id = document.createElement("strong");
     id.className = "turn-id";
     id.textContent = naturalName(item.publicId);
@@ -226,8 +243,8 @@ function buildAreaSlides(items) {
 }
 function renderAreaSlide() {
     if (areaSlides.length === 0) {
-        areaRoom.textContent = "Sin áreas pendientes";
-        areaDoctor.textContent = "La pantalla se actualizará automáticamente";
+        areaRoom.textContent = "Esperando habilitación médica";
+        areaDoctor.textContent = "Aparecerá al detectarse un nuevo número de consulta";
         areaStatus.hidden = true;
         areaPanel.className = "board-panel area-panel area-panel--empty";
         areaCounter.textContent = "—";
@@ -275,9 +292,67 @@ function restartAreaRotation(items) {
         }, areaRotationSeconds * 1_000);
     }
 }
+function renderWaitingMessage() {
+    const message = waitingMessages[waitingMessageIndex % waitingMessages.length];
+    if (!message)
+        return;
+    callout.hidden = false;
+    callout.setAttribute("aria-live", "off");
+    callout.className = "callout callout--waiting";
+    calledLabel.textContent = message.label;
+    calledTurn.textContent = message.headline;
+    calledTurn.classList.remove("called-patient--long", "called-patient--very-long");
+    calledRoom.textContent = message.context;
+    calledDoctor.textContent = message.detail;
+}
+function startWaitingMessageRotation() {
+    renderWaitingMessage();
+    if (waitingMessageTimer !== null)
+        return;
+    waitingMessageTimer = window.setInterval(() => {
+        waitingMessageIndex = (waitingMessageIndex + 1) % waitingMessages.length;
+        renderWaitingMessage();
+    }, 14_000);
+}
+function stopWaitingMessageRotation() {
+    if (waitingMessageTimer === null)
+        return;
+    window.clearInterval(waitingMessageTimer);
+    waitingMessageTimer = null;
+}
+function scheduledTimestamp(item) {
+    const parsed = item.scheduledAt ? Date.parse(item.scheduledAt) : Number.NaN;
+    return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+}
+function isInCurrentSession(item, now) {
+    const scheduled = new Date(scheduledTimestamp(item));
+    if (Number.isNaN(scheduled.getTime()) ||
+        scheduled.getFullYear() !== now.getFullYear() ||
+        scheduled.getMonth() !== now.getMonth() ||
+        scheduled.getDate() !== now.getDate()) {
+        return false;
+    }
+    const currentHour = now.getHours();
+    const sessionStartHour = currentHour >= morningStartHour && currentHour < recessStartHour
+        ? morningStartHour
+        : currentHour >= afternoonStartHour && currentHour < dayEndHour
+            ? afternoonStartHour
+            : null;
+    const sessionEndHour = sessionStartHour === morningStartHour
+        ? recessStartHour
+        : sessionStartHour === afternoonStartHour
+            ? dayEndHour
+            : null;
+    return sessionStartHour !== null && sessionEndHour !== null &&
+        scheduled.getHours() >= sessionStartHour && scheduled.getHours() < sessionEndHour;
+}
 function renderGeneral(items) {
+    const now = new Date();
     const upcoming = items
         .filter(item => !item.isActiveCall && item.estado !== "en-atencion")
+        .filter(item => scheduledTimestamp(item) >= now.getTime())
+        .filter(item => isInCurrentSession(item, now))
+        .sort((left, right) => scheduledTimestamp(left) - scheduledTimestamp(right))
         .slice(0, maxVisibleRows);
     const fragment = document.createDocumentFragment();
     upcoming.forEach((item, index) => fragment.append(createGeneralRow(item, index + 1)));
@@ -292,12 +367,6 @@ function renderFreshness(generatedAt) {
 }
 function selectPeruvianSpanishVoice(voices) {
     const spanish = voices.filter(voice => voice.lang.toLocaleLowerCase().startsWith("es"));
-    const classicLocalNames = ["sabina", "helena"];
-    for (const classicName of classicLocalNames) {
-        const classicVoice = spanish.find(voice => voice.localService && voice.name.toLocaleLowerCase().includes(classicName));
-        if (classicVoice)
-            return classicVoice;
-    }
     const exactPeruvian = spanish.find(voice => voice.localService && voice.lang.toLocaleLowerCase() === "es-pe") ??
         spanish.find(voice => voice.lang.toLocaleLowerCase() === "es-pe");
     if (exactPeruvian)
@@ -306,18 +375,19 @@ function selectPeruvianSpanishVoice(voices) {
         spanish.find(voice => /per[uú]/i.test(voice.name));
     if (namedPeruvian)
         return namedPeruvian;
-    const latinAmerican = ["es-us", "es-mx", "es-co", "es-cl"];
+    const latinAmerican = ["es-mx", "es-co", "es-cl", "es-us", "es-ec", "es-bo", "es-ar", "es-419"];
     for (const locale of latinAmerican) {
         const voice = spanish.find(candidate => candidate.localService && candidate.lang.toLocaleLowerCase() === locale) ??
             spanish.find(candidate => candidate.lang.toLocaleLowerCase() === locale);
         if (voice)
             return voice;
     }
-    return spanish.find(voice => voice.localService && voice.lang.toLocaleLowerCase() !== "es-ar") ??
-        spanish.find(voice => voice.lang.toLocaleLowerCase() !== "es-ar") ??
-        spanish[0];
+    return spanish.find(voice => voice.localService &&
+        voice.lang.toLocaleLowerCase() !== "es-es" && voice.lang.toLocaleLowerCase() !== "es") ??
+        spanish.find(voice => voice.lang.toLocaleLowerCase() !== "es-es" && voice.lang.toLocaleLowerCase() !== "es");
 }
 let preferredSpanishVoice;
+let pendingSpeechItem = null;
 if ("speechSynthesis" in window) {
     const refreshSpanishVoice = () => {
         preferredSpanishVoice = selectPeruvianSpanishVoice(window.speechSynthesis.getVoices());
@@ -339,6 +409,7 @@ function speakCallout(item) {
         return;
     }
     const synthesizer = window.speechSynthesis;
+    pendingSpeechItem = item;
     let spoken = false;
     const play = () => {
         if (spoken)
@@ -357,7 +428,14 @@ function speakCallout(item) {
         announcement.pitch = 1;
         announcement.volume = 1;
         announcement.voice = spanishVoice;
+        announcement.onstart = () => { pendingSpeechItem = null; };
+        announcement.onerror = () => { pendingSpeechItem = item; };
         synthesizer.speak(announcement);
+        window.setTimeout(() => {
+            if (!synthesizer.speaking && pendingSpeechItem?.publicId === item.publicId) {
+                pendingSpeechItem = item;
+            }
+        }, 1_000);
         return true;
     };
     if (play())
@@ -379,6 +457,12 @@ function speakCallout(item) {
         }, delay);
     });
 }
+window.addEventListener("pointerdown", () => {
+    const pending = pendingSpeechItem;
+    if (!pending || !("speechSynthesis" in window) || window.speechSynthesis.speaking)
+        return;
+    speakCallout(pending);
+}, { passive: true });
 function hasSameVisibleContent(current, next) {
     if (current.siteDisplayName !== next.siteDisplayName || current.status !== next.status || current.items.length !== next.items.length) {
         return false;
@@ -393,6 +477,7 @@ function hasSameVisibleContent(current, next) {
             item.priorityTier === candidate.priorityTier &&
             item.isPreferential === candidate.isPreferential &&
             item.isMedicalExam === candidate.isMedicalExam &&
+            item.isAmanecida === candidate.isAmanecida &&
             item.scheduledAt === candidate.scheduledAt &&
             item.arrivedAt === candidate.arrivedAt &&
             item.shouldAnnounce === candidate.shouldAnnounce &&
@@ -403,27 +488,30 @@ function renderSnapshot(snapshot) {
     siteName.textContent = snapshot.siteDisplayName;
     const called = snapshot.items.find(item => item.isActiveCall) ?? null;
     if (called) {
+        stopWaitingMessageRotation();
+        if (pendingSpeechItem && pendingSpeechItem.publicId !== called.publicId) {
+            pendingSpeechItem = null;
+        }
         callout.hidden = false;
+        callout.setAttribute("aria-live", "assertive");
         turnosMain.classList.remove("main--no-callout");
         callout.classList.remove("callout--idle");
+        callout.classList.remove("callout--waiting");
         callout.classList.add("callout--calling");
         callout.classList.remove("callout--attending");
         callout.classList.toggle("callout--priority", called.isMedicalExam);
         calledLabel.textContent = "LLAMANDO AHORA";
-        calledTurn.textContent = naturalName(called.publicId);
+        const calledName = naturalName(called.publicId);
+        calledTurn.textContent = calledName;
+        calledTurn.classList.toggle("called-patient--long", calledName.length > 25);
+        calledTurn.classList.toggle("called-patient--very-long", calledName.length > 38);
         calledRoom.textContent = roomDisplayName(called.consultorio);
         calledDoctor.textContent = doctorDisplayName(called.medico);
     }
     else {
-        callout.hidden = true;
-        turnosMain.classList.add("main--no-callout");
-        callout.classList.add("callout--idle");
-        callout.classList.remove("callout--calling", "callout--attending");
-        callout.classList.remove("callout--priority");
-        calledLabel.textContent = "Llamando ahora";
-        calledTurn.textContent = snapshot.items.length > 0 ? "Próximo llamado" : "Sin llamados pendientes";
-        calledRoom.textContent = "—";
-        calledDoctor.textContent = "—";
+        pendingSpeechItem = null;
+        turnosMain.classList.remove("main--no-callout");
+        startWaitingMessageRotation();
     }
     renderGeneral(snapshot.items);
     restartAreaRotation(snapshot.items);

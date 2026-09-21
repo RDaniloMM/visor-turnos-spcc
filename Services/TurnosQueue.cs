@@ -25,6 +25,8 @@ public sealed class TurnosQueue(
     private readonly Dictionary<long, TurnoQueueEntry> _entriesByAppointment = [];
     private readonly Dictionary<string, ActiveCallState> _activeByArea = [];
     private readonly HashSet<long> _consumedConsultationIds = [];
+    private readonly HashSet<long> _newConsultationIds = [];
+    private bool _hasInitialSnapshot;
 
     public IReadOnlyList<ActiveCallSelection> SynchronizeAndSelect(
         IReadOnlyList<TurnoCandidate> candidates,
@@ -143,10 +145,33 @@ public sealed class TurnosQueue(
         }
     }
 
+    /// <summary>
+    /// Devuelve las citas cuyo llamado ya venció sin que LOLCLI registre una
+    /// llegada. Siguen existiendo en la cola interna (al final del área), pero
+    /// no deben ocupar un lugar de "Próximos" en la TV mientras el médico
+    /// guarda/cierra el intento o vuelve a habilitarlas con otro numcon.
+    /// </summary>
+    public IReadOnlySet<long> GetDeferredAbsentAppointmentIds()
+    {
+        lock (_sync)
+        {
+            return _entriesByAppointment.Values
+                .Where(entry => entry.IsAbsent && !entry.Turno.ArrivedAt.HasValue)
+                .Select(entry => entry.AppointmentId)
+                .ToHashSet();
+        }
+    }
+
     private void Synchronize(IReadOnlyList<TurnoCandidate> candidates)
     {
         var incoming = candidates
             .ToDictionary(candidate => candidate.StableId);
+
+        // Al iniciar o reiniciar el visor, los numcon que ya existen son la
+        // línea base: no son una orden nueva para que el altavoz anuncie
+        // pacientes antiguos. Solo un numcon detectado después del primer
+        // sondeo puede entrar a la cola de llamado.
+        var initialSnapshot = !_hasInitialSnapshot;
 
         foreach (var appointmentId in _entriesByAppointment.Keys.Except(incoming.Keys).ToArray())
         {
@@ -155,9 +180,22 @@ public sealed class TurnosQueue(
 
         foreach (var candidate in incoming.Values)
         {
+            if (!initialSnapshot && candidate.ConsultationId.HasValue)
+            {
+                var previousId = _entriesByAppointment.TryGetValue(candidate.StableId, out var priorEntry)
+                    ? priorEntry.ConsultationId
+                    : null;
+                if (previousId != candidate.ConsultationId)
+                {
+                    _newConsultationIds.Add(candidate.ConsultationId.Value);
+                }
+            }
+
             if (_entriesByAppointment.TryGetValue(candidate.StableId, out var previous))
             {
                 var completedAttempts = GetCompletedAttemptCount(candidate);
+                var hasNewConsultation = candidate.ConsultationId.HasValue &&
+                    candidate.ConsultationId != previous.ConsultationId;
                 _entriesByAppointment[candidate.StableId] = previous with
                 {
                     ConsultationId = candidate.ConsultationId,
@@ -168,7 +206,14 @@ public sealed class TurnosQueue(
                     ConsultationLastModifiedAt = candidate.ConsultationLastModifiedAt,
                     Turno = candidate,
                     CallAttempts = Math.Max(previous.CallAttempts, completedAttempts),
-                    IsAwaitingClose = previous.IsAwaitingClose && IsConsumedCurrentConsultation(candidate)
+                    // Otro numcon es una reactivación explícita del médico:
+                    // deja de ser una ausencia diferida incluso si el altavoz
+                    // está ocupado con otro consultorio en ese sondeo.
+                    IsAbsent = hasNewConsultation ? false : previous.IsAbsent,
+                    IsRequeueExpired = hasNewConsultation ? false : previous.IsRequeueExpired,
+                    IsAwaitingClose = !hasNewConsultation &&
+                                      previous.IsAwaitingClose &&
+                                      IsConsumedCurrentConsultation(candidate)
                 };
                 continue;
             }
@@ -187,6 +232,8 @@ public sealed class TurnosQueue(
                 IsRequeueExpired: false,
                 IsAwaitingClose: false);
         }
+
+        _hasInitialSnapshot = true;
     }
 
     private ActiveCallSelection StartNextGlobally(DateTimeOffset now)
@@ -254,6 +301,7 @@ public sealed class TurnosQueue(
     private bool IsUnconsumedConsultation(TurnoQueueEntry entry) =>
         entry.Turno.Status == TurnoStatus.EnEspera &&
         entry.ConsultationId.HasValue &&
+        _newConsultationIds.Contains(entry.ConsultationId.Value) &&
         !IsConsultationClosed(entry.ConsultationStatus) &&
         !_consumedConsultationIds.Contains(entry.ConsultationId.Value);
 
