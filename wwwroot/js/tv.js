@@ -53,8 +53,9 @@ const waitingMessages = [
     {
         label: "Bienvenidos",
         headline: "Su atención está por comenzar",
-        context: "Hospital SPCC Cuajone",
-        detail: "Gracias por su paciencia"
+        context: "Centro médico",
+        detail: "Gracias por su paciencia",
+        useConfiguredSiteName: true
     },
     {
         label: "Atención ordenada",
@@ -277,7 +278,9 @@ function renderWaitingMessage() {
     calledLabel.textContent = message.label;
     calledTurn.textContent = message.headline;
     calledTurn.classList.remove("called-patient--long", "called-patient--very-long");
-    calledRoom.textContent = message.context;
+    calledRoom.textContent = message.useConfiguredSiteName
+        ? currentSnapshot?.siteDisplayName || message.context
+        : message.context;
     calledDoctor.textContent = message.detail;
 }
 function startWaitingMessageRotation() {

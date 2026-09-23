@@ -51,6 +51,7 @@ interface WaitingMessage {
     headline: string;
     context: string;
     detail: string;
+    useConfiguredSiteName?: boolean;
 }
 
 const required = <T extends HTMLElement>(id: string): T => {
@@ -121,8 +122,9 @@ const waitingMessages: readonly WaitingMessage[] = [
     {
         label: "Bienvenidos",
         headline: "Su atención está por comenzar",
-        context: "Hospital SPCC Cuajone",
-        detail: "Gracias por su paciencia"
+        context: "Centro médico",
+        detail: "Gracias por su paciencia",
+        useConfiguredSiteName: true
     },
     {
         label: "Atención ordenada",
@@ -374,7 +376,12 @@ function renderWaitingMessage(): void {
     calledLabel.textContent = message.label;
     calledTurn.textContent = message.headline;
     calledTurn.classList.remove("called-patient--long", "called-patient--very-long");
-    calledRoom.textContent = message.context;
+    // SiteDisplayName se origina en Site__DisplayName del .env (o de una
+    // variable de entorno real) y llega dentro del snapshot del servidor.
+    // Así el mismo artefacto muestra la sede correcta sin texto fijo.
+    calledRoom.textContent = message.useConfiguredSiteName
+        ? currentSnapshot?.siteDisplayName || message.context
+        : message.context;
     calledDoctor.textContent = message.detail;
 }
 
