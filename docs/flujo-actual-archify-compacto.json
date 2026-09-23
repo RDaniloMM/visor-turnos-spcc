@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Flujo actual del visor de turnos",
+    "quality_profile": "showcase",
+      "viewBox": [1175, 478],
+    "repository": {
+      "url": "https://github.com/RDaniloMM/visor-turnos-spcc",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "a735b529ecb8943be53f8ad47a95a5c27049e1ce"
+    }
+  },
+  "components": [
+    {
+      "id": "medico",
+      "type": "external",
+      "label": "Médico",
+      "sublabel": "elige el paciente en LOLCLI",
+      "pos": [35, 140],
+      "size": [135, 70],
+      "sources": [{ "path": "docs/flujo-llamados.md", "line": 24, "label": "flujo médico" }]
+    },
+    {
+      "id": "acto",
+      "type": "database",
+      "label": "Abre la atención",
+      "sublabel": "crea un numcon nuevo",
+      "pos": [215, 140],
+      "size": [140, 70],
+      "sources": [{ "path": "Data/OdbcTurnosRepository.cs", "line": 36, "label": "actos recientes" }]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Revisor central",
+      "sublabel": "revisa cada 3 s, uno solo",
+      "pos": [400, 140],
+      "size": [140, 70],
+      "sources": [{ "path": "Services/TurnosPollingWorker.cs", "label": "worker" }]
+    },
+    {
+      "id": "odbc",
+      "type": "database",
+      "label": "Lee las citas",
+      "sublabel": "solo lee, no escribe",
+      "pos": [585, 140],
+      "size": [145, 70],
+      "sources": [{ "path": "Data/OdbcTurnosRepository.cs", "line": 15, "label": "consulta SQL" }]
+    },
+    {
+      "id": "builder",
+      "type": "backend",
+      "label": "Decide a quién llamar",
+      "sublabel": "libre: EMA, amanecida, demás",
+      "pos": [775, 140],
+      "size": [145, 70],
+      "sources": [
+        { "path": "Services/TurnosSnapshotBuilder.cs", "label": "builder" },
+        { "path": "Services/TurnosQueue.cs", "label": "cola" }
+      ]
+    },
+    {
+      "id": "signalr",
+      "type": "messagebus",
+      "label": "Envía el aviso a la TV",
+      "sublabel": "el aviso completo",
+      "pos": [965, 140],
+      "size": [165, 70],
+      "sources": [{ "path": "Hubs/TurnosHub.cs", "label": "hub" }]
+    },
+    {
+      "id": "tv",
+      "type": "frontend",
+      "label": "TV llama al paciente",
+      "sublabel": "Llamando, Próximo y voz",
+      "pos": [965, 308],
+      "size": [165, 70],
+      "sources": [{ "path": "ClientApp/src/tv.ts", "label": "cliente TV" }]
+    },
+    {
+      "id": "reintento",
+      "type": "external",
+      "label": "Cerrar sin guardar",
+      "sublabel": "cerrado sin guardar; otro intento",
+      "pos": [215, 308],
+      "size": [170, 70],
+      "sources": [{ "path": "docs/flujo-llamados.md", "line": 38, "label": "reintento" }]
+    },
+    {
+      "id": "silencio",
+      "type": "security",
+      "label": "NO llama solo",
+      "sublabel": "Z53.8: no se realizó o reabierto",
+      "pos": [770, 308],
+      "size": [175, 70],
+      "sources": [{ "path": "Services/TurnosQueue.cs", "line": 213, "label": "elegibilidad" }]
+    },
+    {
+      "id": "excluidos",
+      "type": "security",
+      "label": "Consultorios excluidos",
+      "sublabel": "Medicina del Trabajo y Emergencia",
+      "pos": [570, 308],
+      "size": [165, 70],
+      "sources": [{ "path": "appsettings.json", "line": 25, "label": "configuración" }]
+    }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "Servidor VisorTurnos: lectura y publicación", "wraps": ["worker", "builder", "signalr"], "pad": 28 },
+    { "kind": "region", "label": "Fuente LOLCLI: no se escribe desde el visor", "wraps": ["acto", "odbc"], "pad": 25 }
+  ],
+  "connections": [
+    { "id": "abrir", "from": "medico", "to": "acto", "variant": "emphasis" },
+    { "id": "detectar", "from": "acto", "to": "worker" },
+    { "id": "sondear", "from": "worker", "to": "odbc", "variant": "security" },
+    { "id": "construir", "from": "odbc", "to": "builder" },
+    { "id": "publicar", "from": "builder", "to": "signalr" },
+    { "id": "renderizar", "from": "signalr", "to": "tv", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "cerrar", "from": "acto", "to": "reintento", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "reabrir", "from": "reintento", "to": "medico", "label": "reabre y llama", "variant": "emphasis" },
+    { "id": "bloquear", "from": "builder", "to": "silencio", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "id": "filtrar", "from": "builder", "to": "excluidos", "variant": "security", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "SÍ llama (se cumple todo)",
+      "items": [
+        "Abrir al paciente (nuevo o reabierto) activa el llamado.",
+        "Un solo audio: si hay llamado en curso, el nuevo espera su turno.",
+        "Al liberarse, orden: EMA (examen médico), amanecida, demás.",
+        "La voz dice nombre y consultorio; repite a los 20 s, fin a los 40 s."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "NO llama (basta una sola)",
+      "items": [
+        "Z53.8 = procedimiento no realizado: ese llamado no sale (luego sí puede llamar).",
+        "Reabrió tras guardar, con o sin diagnóstico: no llama solo; toca la puerta.",
+        "Lo abierto antes de reiniciar no se anuncia: hace falta un intento nuevo.",
+        "Medicina del Trabajo o Emergencia nunca aparecen ni se anuncian."
+      ]
+    }
+  ]
+}

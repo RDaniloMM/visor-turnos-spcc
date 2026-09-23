@@ -3,6 +3,10 @@ obj/
 .vs/
 ClientApp/node_modules/
 artifacts/
+publish/
 TestResults/
 *.user
 appsettings.Production.json
+.env
+.env.*
+!.env.example

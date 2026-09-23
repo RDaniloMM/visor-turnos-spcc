@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Flujo actual del visor de turnos",
+    "quality_profile": "showcase",
+    "viewBox": [1220, 660]
+  },
+  "lanes": [
+    { "id": "medico", "label": "Médico y LOLCLI" },
+    { "id": "datos", "label": "LOLCLI SQL Server", "variant": "exception" },
+    { "id": "visor", "label": "Servidor VisorTurnos" },
+    { "id": "tv", "label": "Pantalla de sala de espera" }
+  ],
+  "phases": [
+    { "id": "acto", "label": "Acto médico", "fromCol": 0, "toCol": 1 },
+    { "id": "lectura", "label": "Lectura central", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "publicacion", "label": "Publicación y pantalla", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["seleccionar", "acto_abierto", "worker", "consulta", "builder_cola", "snapshot", "televisor"],
+  "semanticChecks": {
+    "allowedRoots": ["seleccionar"],
+    "allowedTerminals": ["televisor", "silencioso", "sin_guardar", "excluidos"],
+    "requiredPaths": [
+      { "from": "seleccionar", "to": "televisor" },
+      { "from": "acto_abierto", "to": "silencioso" }
+    ]
+  },
+  "nodes": [
+    { "id": "seleccionar", "lane": "medico", "col": 0, "type": "external", "label": "Médico elige paciente", "sublabel": "solo un acto nuevo hace llamar", "width": 160 },
+    { "id": "acto_abierto", "lane": "datos", "col": 1, "type": "database", "label": "Abre la atención", "sublabel": "LOLCLI crea un numcon nuevo", "width": 165 },
+    { "id": "worker", "lane": "visor", "col": 2, "type": "backend", "label": "Revisor central", "sublabel": "revisa cada 3 s, uno solo", "width": 160 },
+    { "id": "consulta", "lane": "datos", "col": 3, "type": "database", "label": "Lee las citas", "sublabel": "solo lee, no escribe", "width": 165 },
+    { "id": "builder_cola", "lane": "visor", "col": 4, "type": "security", "label": "Decide a quién llamar", "sublabel": "libre: EMA, amanecida, demás", "width": 170 },
+    { "id": "snapshot", "lane": "visor", "col": 5, "type": "backend", "label": "Aviso en pantalla", "sublabel": "el aviso vigente en la TV", "width": 150 },
+    { "id": "televisor", "lane": "tv", "col": 5, "type": "frontend", "label": "TV llama al paciente", "sublabel": "con voz; repite 20 s, fin 40 s", "width": 165 },
+    { "id": "sin_guardar", "lane": "medico", "col": 2, "type": "external", "label": "Cierra sin guardar", "sublabel": "el intento se anula; reintenta", "width": 165 },
+    { "id": "guardado", "lane": "medico", "col": 3, "type": "external", "label": "Guarda la atención", "sublabel": "la cita queda guardada", "width": 160 },
+    { "id": "silencioso", "lane": "medico", "col": 5, "type": "security", "label": "NO llama solo", "sublabel": "Z53.8 o reabierto; sin voz", "width": 170 },
+    { "id": "excluidos", "lane": "datos", "col": 5, "type": "security", "label": "Consultorios excluidos", "sublabel": "Medicina del Trabajo y Emergencia", "width": 165 }
+  ],
+  "edges": [
+    { "id": "seleccion-abre", "from": "seleccionar", "to": "acto_abierto", "label": "abrir genera el llamado", "role": "main", "variant": "emphasis" },
+    { "id": "acto-sondeo", "from": "acto_abierto", "to": "worker", "label": "detecta el numcon nuevo", "role": "main" },
+    { "id": "worker-odbc", "from": "worker", "to": "consulta", "label": "lee y no escribe", "role": "main", "variant": "security" },
+    { "id": "odbc-builder", "from": "consulta", "to": "builder_cola", "label": "hasta 100 filas del día", "role": "main" },
+    { "id": "builder-snapshot", "from": "builder_cola", "to": "snapshot", "role": "main", "variant": "emphasis" },
+    { "id": "snapshot-tv", "from": "snapshot", "to": "televisor", "role": "main" },
+    { "id": "no-save", "from": "acto_abierto", "to": "sin_guardar", "label": "el paciente no vino", "role": "branch", "variant": "dashed" },
+    { "id": "save", "from": "acto_abierto", "to": "guardado", "label": "guarda la atención", "role": "branch" },
+    { "id": "reopen-ambiguous", "from": "guardado", "to": "silencioso", "label": "guarda y reabre: no llama", "role": "error", "variant": "security" },
+    { "id": "silente", "from": "builder_cola", "to": "silencioso", "label": "Z53.8: procedimiento no realizado", "role": "error", "variant": "security" },
+    { "id": "filtrar", "from": "builder_cola", "to": "excluidos", "label": "excluidos nunca llaman", "role": "error", "variant": "security" },
+    { "id": "reintento", "from": "sin_guardar", "to": "seleccionar", "label": "reabre y vuelve a llamar", "role": "return" }
+  ]
+}

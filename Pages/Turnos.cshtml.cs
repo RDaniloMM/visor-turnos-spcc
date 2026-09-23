@@ -7,9 +7,11 @@ namespace visor_turnos.Pages;
 
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class TurnosModel(
+    IOptions<SiteOptions> siteOptions,
     IOptions<QueueOptions> queueOptions,
     IOptions<ScheduleOptions> scheduleOptions) : PageModel
 {
+    public string SiteDisplayName { get; } = siteOptions.Value.DisplayName;
     public int StaleAfterSeconds { get; } = queueOptions.Value.StaleAfterSeconds;
     public int MaxVisibleRows { get; } = queueOptions.Value.MaxVisibleRows;
     public int AreaRotationSeconds { get; } = queueOptions.Value.AreaRotationSeconds;

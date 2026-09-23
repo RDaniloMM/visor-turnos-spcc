@@ -2,25 +2,27 @@ using System.Data;
 using System.Data.Common;
 using System.Data.Odbc;
 
+// Carga .env (rama del repositorio hacia arriba) sin sobrescribir variables de
+// entorno reales. Las claves SNAPSHOT_* deben vivir en .env o en el entorno; el
+// nombre del servidor de produccion nunca se codifica en el repositorio.
+DotNetEnv.Env.NoClobber().TraversePath().Load();
+
 const int SiteCode = 1;
-// El DSN LOLCLI9000 usa el controlador heredado SQLSRV32, que no negocia el
-// certificado TLS del servidor actual. Esta conexión conserva la misma
-// autenticación integrada y solo se utiliza para exportar mediante SELECT.
-const string SourceConnectionString =
-    "CONNSTRING_SOURCE_REDACTADO";
-const string TargetMasterConnectionString =
-    "Driver={ODBC Driver 18 for SQL Server};Server=(localdb)\\VisorTurnosDevelopment;Database=master;Trusted_Connection=Yes;TrustServerCertificate=Yes;";
-const string TargetConnectionString =
-    "Driver={ODBC Driver 18 for SQL Server};Server=(localdb)\\VisorTurnosDevelopment;Database=VisorTurnosDevelopment;Trusted_Connection=Yes;TrustServerCertificate=Yes;";
+var sourceConnectionString = Environment.GetEnvironmentVariable("SNAPSHOT_SOURCE_CONNECTION")
+    ?? throw new InvalidOperationException("Falta SNAPSHOT_SOURCE_CONNECTION. Definala en .env o en el entorno (Driver={ODBC Driver 18 for SQL Server};Server=<server>;Database=LOLCLI9000;Trusted_Connection=Yes;Encrypt=Yes;TrustServerCertificate=Yes;).");
+var targetMasterConnectionString = Environment.GetEnvironmentVariable("SNAPSHOT_TARGET_MASTER_CONNECTION")
+    ?? "Driver={ODBC Driver 18 for SQL Server};Server=(localdb)\\VisorTurnosDevelopment;Database=master;Trusted_Connection=Yes;TrustServerCertificate=Yes;";
+var targetConnectionString = Environment.GetEnvironmentVariable("SNAPSHOT_TARGET_CONNECTION")
+    ?? "Driver={ODBC Driver 18 for SQL Server};Server=(localdb)\\VisorTurnosDevelopment;Database=VisorTurnosDevelopment;Trusted_Connection=Yes;TrustServerCertificate=Yes;";
 
 var siteZone = TimeZoneInfo.FindSystemTimeZoneById("SA Pacific Standard Time");
 var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, siteZone);
 var dayStart = localNow.Date;
 var dayEndExclusive = dayStart.AddDays(1);
 
-var snapshot = await ReadSourceAsync(dayStart, dayEndExclusive);
-await EnsureDatabaseAsync();
-await ReplaceSnapshotAsync(snapshot);
+var snapshot = await ReadSourceAsync(dayStart, dayEndExclusive, sourceConnectionString);
+await EnsureDatabaseAsync(targetMasterConnectionString);
+await ReplaceSnapshotAsync(snapshot, targetConnectionString);
 Console.WriteLine(
     "Snapshot de desarrollo creado: {0} citas, {1} médicos, {2} consultorios, {3} consultas y {4} ausencias documentadas.",
     snapshot.Citas.Count,
@@ -29,9 +31,9 @@ Console.WriteLine(
     snapshot.Consultas.Count,
     snapshot.NoShowDiagnosticos.Count);
 
-static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayEndExclusive)
+static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayEndExclusive, string sourceConnectionString)
 {
-    await using var source = new OdbcConnection(SourceConnectionString);
+    await using var source = new OdbcConnection(sourceConnectionString);
     await source.OpenAsync();
 
     var citas = await ReadAsync(source, """
@@ -108,9 +110,9 @@ static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayE
     return new SnapshotData(citas, medicos, consultorios, consultas, noShowDiagnosticos);
 }
 
-static async Task EnsureDatabaseAsync()
+static async Task EnsureDatabaseAsync(string targetMasterConnectionString)
 {
-    await using var master = new OdbcConnection(TargetMasterConnectionString);
+    await using var master = new OdbcConnection(targetMasterConnectionString);
     await master.OpenAsync();
 
     try
@@ -154,9 +156,9 @@ static async Task<string> GetInstanceDefaultDataDirectoryAsync(OdbcConnection co
     return directory;
 }
 
-static async Task ReplaceSnapshotAsync(SnapshotData snapshot)
+static async Task ReplaceSnapshotAsync(SnapshotData snapshot, string targetConnectionString)
 {
-    await using var target = new OdbcConnection(TargetConnectionString);
+    await using var target = new OdbcConnection(targetConnectionString);
     await target.OpenAsync();
     using var transaction = target.BeginTransaction();
 

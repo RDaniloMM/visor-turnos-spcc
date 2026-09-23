@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#d22730" />
     <meta name="robots" content="noindex,nofollow" />
-    <title>Turnos de atencion</title>
+    <title>@Model.SiteDisplayName – Turnos de atencion</title>
     <link rel="stylesheet" href="~/css/tv.css" asp-append-version="true" />
 </head>
 <body data-stale-after-seconds="@Model.StaleAfterSeconds"
@@ -20,13 +20,13 @@
       data-day-end-hour="@Model.DayEndHour">
     <div class="tv-shell">
         <header class="topbar">
-            <div class="brand" aria-label="Centro medico">
+            <div class="brand" aria-label="@Model.SiteDisplayName">
                 <span class="brand-mark" aria-hidden="true">
                     <img src="~/img/southern-peru-logo.png" asp-append-version="true" alt="" />
                 </span>
                 <div>
                     <p class="eyebrow">Bienvenidos</p>
-                    <h1 id="site-name">Centro medico</h1>
+                    <h1 id="site-name">@Model.SiteDisplayName</h1>
                 </div>
             </div>
             <div class="clock" aria-label="Fecha y hora actual">

@@ -385,7 +385,7 @@ No almacenar contrasenas en:
 
 ## 11. Configuracion
 
-La configuracion no secreta puede vivir en `appsettings.json`. Los valores de produccion se suministran por `appsettings.Production.json`, variables de entorno o configuracion protegida del servidor.
+La configuracion no secreta puede vivir en `appsettings.json`. Los valores de produccion se suministran por `.env` (configuracion no secreta por sede versionada en `deploy/sites/<sede>.env` y aplicada en el servidor), variables de entorno o configuracion protegida del servidor. No usar `appsettings.Production.json`.
 
 Estructura esperada:
 

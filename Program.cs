@@ -1,3 +1,4 @@
+using VisorTurnos.Configuration;
 using VisorTurnos.Data;
 using VisorTurnos.Hubs;
 using VisorTurnos.Options;
@@ -5,6 +6,7 @@ using VisorTurnos.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddDotEnv(builder.Environment.ContentRootPath);
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
 {

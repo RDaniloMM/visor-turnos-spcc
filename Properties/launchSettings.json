@@ -28,6 +28,42 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DataSource__EnableDevelopmentSnapshot": "true"
       }
+    },
+    "cuajone": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "turnos",
+      "applicationUrl": "https://localhost:7218;http://localhost:5280",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "Site__Code": "1",
+        "Site__DisplayName": "Hospital SPCC Cuajone"
+      }
+    },
+    "ilo": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "turnos",
+      "applicationUrl": "https://localhost:7219;http://localhost:5281",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "Site__Code": "2",
+        "Site__DisplayName": "Hospital SPCC Ilo"
+      }
+    },
+    "toquepala": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "turnos",
+      "applicationUrl": "https://localhost:7220;http://localhost:5282",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "Site__Code": "3",
+        "Site__DisplayName": "Hospital SPCC Toquepala"
+      }
     }
   }
 }

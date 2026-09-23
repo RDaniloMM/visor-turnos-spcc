@@ -7,7 +7,7 @@ namespace visor_turnos.Pages
     {
         public IActionResult OnGet()
         {
-            return Redirect("/turnos");
+            return RedirectToPage("/Turnos");
         }
     }
 }
