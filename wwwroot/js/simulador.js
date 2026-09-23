@@ -100,20 +100,14 @@ function renderDemoMedicalOptions(turns) {
 }
 
 function queueFollowUp(entry) {
-    if (entry.hasReachedMaxAttempts) return "Ausente · máximo alcanzado";
-    if (entry.isRequeueExpired) return "Ausente · vencido";
-    if (entry.isAwaitingClose) return `Esperando P/S · llamado ${entry.callAttempts}`;
-    if (entry.queueState === "esperando-reactivacion") return `Espera nuevo T · ${entry.callAttempts} intento(s)`;
-    if (entry.callAttempts > 0) return `Llamado ${entry.callAttempts}`;
+    if (entry.queueState === "llamado-finalizado") return "Decisión pendiente del médico";
+    if (entry.queueState === "llamando") return "Aviso activo";
     return "En cola";
 }
 
 function orderedQueueState(entry) {
     if (entry.queueState === "llamando") return "Llamando";
-    if (entry.hasReachedMaxAttempts) return "Ausente · máximo";
-    if (entry.isRequeueExpired) return "Ausente · vencido";
-    if (entry.isAwaitingClose) return "Esperando cierre P/S";
-    if (entry.queueState === "esperando-reactivacion") return "Esperando nuevo numcon=T";
+    if (entry.queueState === "llamado-finalizado") return "Llamado finalizado · decisión médica";
     return entry.isEligibleForCall ? "Habilitado para llamar" : "Próximo";
 }
 

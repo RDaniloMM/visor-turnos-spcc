@@ -16,6 +16,7 @@ public sealed class DevelopmentSimulationRepository(
     DevelopmentSnapshotGuard guard,
     IOptions<SiteOptions> siteOptions,
     IOptions<ScheduleOptions> scheduleOptions,
+    ConsultorioExclusionPolicy consultorioExclusionPolicy,
     TimeProvider timeProvider)
 {
     public async Task<IReadOnlyList<SimulationTurnDto>> GetTurnsAsync(CancellationToken cancellationToken)
@@ -54,11 +55,17 @@ public sealed class DevelopmentSimulationRepository(
         var results = new List<SimulationTurnDto>();
         while (await reader.ReadAsync(cancellationToken))
         {
+            var consultorio = ReadString(reader, 3) ?? "Por confirmar";
+            if (consultorioExclusionPolicy.IsExcluded(consultorio))
+            {
+                continue;
+            }
+
             results.Add(new SimulationTurnDto(
                 reader.GetInt32(0),
                 ReadString(reader, 1) ?? string.Empty,
                 ReadString(reader, 2) ?? "Sin nombre",
-                ReadString(reader, 3) ?? "Por confirmar",
+                consultorio,
                 ReadString(reader, 4) ?? "Por confirmar",
                 reader.GetDateTime(5),
                 ReadString(reader, 6),
@@ -147,7 +154,7 @@ public sealed class DevelopmentSimulationRepository(
         transaction.Commit();
         return new SimulationActionResultDto(
             true,
-            $"Acto médico {consultationId} creado. El nuevo numcon habilita el llamado; la prefactura es opcional en esta simulación.");
+            $"Acto médico {consultationId} creado. El visor evalúa si corresponde anunciarlo; la prefactura es opcional en esta simulación.");
     }
 
     public async Task<SimulationActionResultDto> CreatePrefacturaAsync(int invnum, CancellationToken cancellationToken)
@@ -251,6 +258,10 @@ public sealed class DevelopmentSimulationRepository(
     {
         await using var connection = await OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
+        await ExecuteAsync(connection, transaction, """
+            DELETE FROM dbo.am_diagnosticos
+            WHERE numcon IN (SELECT numcon FROM dbo.am_consulta WHERE invnum = ?);
+            """, cancellationToken, invnum);
         await ExecuteAsync(connection, transaction, "DELETE FROM dbo.am_consulta WHERE invnum = ?;", cancellationToken, invnum);
         var updated = await ExecuteAsync(connection, transaction,
             "UPDATE dbo.citas SET prfnum = 0, statte = 'N' WHERE invnum = ?;",

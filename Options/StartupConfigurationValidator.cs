@@ -41,6 +41,11 @@ public sealed class StartupConfigurationValidator(
             failures.Add("BusinessRules:ClosedStatusCodes debe validarse antes de activar ODBC.");
         }
 
+        if (string.IsNullOrWhiteSpace(rules.NoShowDiagnosisCode))
+        {
+            failures.Add("BusinessRules:NoShowDiagnosisCode debe configurarse antes de activar ODBC.");
+        }
+
         if (!rules.ZeroPrefacturaMeansAbsent.HasValue)
         {
             failures.Add("BusinessRules:ZeroPrefacturaMeansAbsent debe validarse antes de activar ODBC.");

@@ -58,7 +58,7 @@
                     </div>
                     <div class="area-context">
                         <strong id="area-room">Consultorio por confirmar</strong>
-                        <span id="area-doctor">Dr. por confirmar</span>
+                        <span id="area-doctor" class="area-doctor">Dr. por confirmar</span>
                         <span id="area-status" class="area-status area-status--available">SIN DATOS</span>
                     </div>
                     <div class="area-table-head" aria-hidden="true">
@@ -71,20 +71,26 @@
                     </div>
                 </section>
 
-                <section class="board-panel general-panel" aria-labelledby="general-title">
-                    <div class="board-titlebar general-titlebar">
+                <section id="area-panel-secondary" class="board-panel area-panel" aria-labelledby="area-title-secondary">
+                    <div class="board-titlebar area-titlebar">
                         <div>
-                            <p class="board-kicker">Orden de atención</p>
-                            <h3 id="general-title">Próximos turnos</h3>
+                            <p class="board-kicker">Rotación por área</p>
+                            <h3 id="area-title-secondary">Próximos por consultorio</h3>
                         </div>
+                        <span id="area-counter-secondary" class="area-counter" aria-label="Posición del área">—</span>
                     </div>
-                    <div class="general-table-head" aria-hidden="true">
-                        <span>Orden</span><span>Paciente</span><span>Consultorio y profesional</span><span>Estado</span>
+                    <div class="area-context">
+                        <strong id="area-room-secondary">Consultorio por confirmar</strong>
+                        <span id="area-doctor-secondary" class="area-doctor">Dr. por confirmar</span>
+                        <span id="area-status-secondary" class="area-status area-status--available">SIN DATOS</span>
                     </div>
-                    <div id="general-list" class="board-list general-list" role="list" aria-live="polite"></div>
-                    <div id="general-empty" class="empty-state" hidden>
-                        <strong>No hay próximos turnos en esta jornada</strong>
-                        <span>La siguiente agenda se mostrará en su horario correspondiente.</span>
+                    <div class="area-table-head" aria-hidden="true">
+                        <span>Paciente</span><span>Estado</span>
+                    </div>
+                    <div id="area-list-secondary" class="board-list area-list" role="list" aria-live="polite"></div>
+                    <div id="area-empty-secondary" class="empty-state" hidden>
+                        <strong>Esperando habilitación médica</strong>
+                        <span>El consultorio aparecerá cuando se genere un nuevo acto.</span>
                     </div>
                 </section>
             </div>

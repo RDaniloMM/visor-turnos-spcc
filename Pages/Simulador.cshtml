@@ -91,7 +91,7 @@
                 </div>
             </section>
             <section id="ordered-view" class="sim-view" role="tabpanel" aria-labelledby="ordered-tab" hidden>
-                <p class="ordered-note">Refleja la misma cola interna del servidor. Incluye los EMA vigentes de toda la jornada y respeta intentos, ausencias y vencimientos.</p>
+                <p class="ordered-note">Refleja la misma cola interna del servidor. Cada <code>numcon</code> nuevo genera un único ciclo de 40 segundos; la decisión posterior corresponde al médico.</p>
                 <div class="table-wrap">
                     <table>
                         <thead>
@@ -110,7 +110,7 @@
                 </div>
                 <span id="queue-freshness" class="queue-freshness">Actualización cada 3 segundos</span>
             </div>
-            <p class="ordered-note">Esta es la cola real mantenida en memoria por el visor. Cada numcon nuevo puede producir un solo ciclo de llamado; P/S libera el consultorio y una reapertura exige otro numcon.</p>
+            <p class="ordered-note">Esta es la cola real mantenida en memoria por el visor. Cada <code>numcon</code> nuevo puede producir un solo ciclo de llamado; al terminar, el visor no marca asistencia ni ausencia.</p>
             <div class="table-wrap queue-table-wrap">
                 <table>
                     <thead>

@@ -55,6 +55,7 @@ builder.Services.AddSingleton<DevelopmentSimulationRepository>();
 builder.Services.AddSingleton<PrefacturaPolicy>();
 builder.Services.AddSingleton<TurnoStatusPolicy>();
 builder.Services.AddSingleton<PriorityPolicy>();
+builder.Services.AddSingleton<ConsultorioExclusionPolicy>();
 builder.Services.AddSingleton<TurnosQueue>();
 builder.Services.AddSingleton<TurnosSnapshotBuilder>();
 builder.Services.AddSingleton<TurnosChangeDetector>();

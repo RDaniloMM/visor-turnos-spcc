@@ -44,7 +44,14 @@ public sealed class OdbcTurnosRepository(
                 consultation.stacon,
                 consultation.feccon,
                 consultation.feccre,
-                consultation.fecumv
+                consultation.fecumv,
+                CAST(CASE WHEN EXISTS
+                (
+                    SELECT 1
+                    FROM dbo.am_diagnosticos AS diagnosis
+                    WHERE diagnosis.numcon = consultation.numcon
+                      AND UPPER(LTRIM(RTRIM(COALESCE(diagnosis.diacod, '')))) = ?
+                ) THEN 1 ELSE 0 END AS bit) AS has_no_show_diagnosis
             FROM dbo.am_consulta AS consultation
             ORDER BY consultation.numcon DESC
         ),
@@ -59,6 +66,16 @@ public sealed class OdbcTurnosRepository(
                 consultation.feccon,
                 consultation.feccre,
                 consultation.fecumv,
+                consultation.has_no_show_diagnosis,
+                MAX(CASE
+                    WHEN UPPER(LTRIM(RTRIM(COALESCE(consultation.stacon, '')))) = 'P'
+                     AND consultation.has_no_show_diagnosis = 0 THEN 1
+                    ELSE 0
+                END) OVER (
+                    PARTITION BY consultation.invnum
+                    ORDER BY consultation.numcon
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ) AS has_prior_closed_act_without_no_show,
                 ROW_NUMBER() OVER (
                     PARTITION BY consultation.invnum
                     ORDER BY consultation.numcon DESC) AS act_rank
@@ -96,7 +113,9 @@ public sealed class OdbcTurnosRepository(
             ac.stacon,
             ac.feccon,
             ac.feccre,
-            ac.fecumv
+            ac.fecumv,
+            ac.has_no_show_diagnosis,
+            CAST(COALESCE(ac.has_prior_closed_act_without_no_show, 0) AS bit) AS has_prior_closed_act_without_no_show
         FROM CitasDelDia AS c
         INNER JOIN dbo.medicos AS m
             ON m.medcod = c.medcod
@@ -138,6 +157,8 @@ public sealed class OdbcTurnosRepository(
         AddParameter(command, OdbcType.DateTime, windowStart.Date);
         AddParameter(command, OdbcType.DateTime, dayEndExclusive);
         AddParameter(command, OdbcType.Int, queueOptions.Value.RecentConsultationRows);
+        var noShowDiagnosisCode = businessRulesOptions.Value.NoShowDiagnosisCode.Trim().ToUpperInvariant();
+        AddParameter(command, OdbcType.VarChar, noShowDiagnosisCode, 6);
         AddParameter(command, OdbcType.Int, Math.Min(maxRows, queueOptions.Value.MaxQueryRows));
         AddParameter(command, OdbcType.VarChar, medicalExamCode, 20);
         AddParameter(command, OdbcType.DateTime, windowStart);
@@ -185,7 +206,9 @@ public sealed class OdbcTurnosRepository(
             ReadDateTime(reader, 20),
             !reader.IsDBNull(10) && reader.GetBoolean(10),
             reader.IsDBNull(13) ? null : reader.GetInt32(13),
-            reader.IsDBNull(14) ? 0 : reader.GetInt32(14));
+            reader.IsDBNull(14) ? 0 : reader.GetInt32(14),
+            !reader.IsDBNull(21) && reader.GetBoolean(21),
+            !reader.IsDBNull(22) && reader.GetBoolean(22));
 
     private static void AddParameter(OdbcCommand command, OdbcType type, object value, int? size = null)
     {

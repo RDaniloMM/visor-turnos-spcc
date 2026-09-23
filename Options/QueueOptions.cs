@@ -16,10 +16,8 @@ public sealed class QueueOptions
     [Range(3, 60)] public int AreaRotationSeconds { get; init; } = 8;
     [Range(0, 240)] public int? EarlyArrivalMinutes { get; init; }
     [Range(0, 240)] public int? LateToleranceMinutes { get; init; }
-    [Range(1, 299)] public int RepeatCallAnnouncementSeconds { get; init; } = 30;
-    [Range(1, 300)] public int CalledDisplaySeconds { get; init; } = 60;
-    [Range(1, 10)] public int MaxCallAttempts { get; init; } = 4;
-    [Range(0, 23)] public int AfternoonRequeueEndHour { get; init; } = 17;
-    [Range(0, 59)] public int AfternoonRequeueEndMinute { get; init; } = 30;
+    [Range(1, 299)] public int RepeatCallAnnouncementSeconds { get; init; } = 20;
+    [Range(1, 300)] public int CalledDisplaySeconds { get; init; } = 40;
+    public string[] ExcludedConsultorios { get; init; } = [];
     [Range(0, 300)] public int ClosedRetentionSeconds { get; init; }
 }

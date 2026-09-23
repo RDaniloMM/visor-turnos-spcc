@@ -21,6 +21,9 @@ public sealed class OdbcTurnosRepositoryTests
         Assert.Contains("ActosRecientes", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("SELECT TOP (?)", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("COUNT(*) OVER (PARTITION BY consultation.invnum) AS attempt_count", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("FROM dbo.am_diagnosticos AS diagnosis", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("AS has_no_show_diagnosis", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
+        Assert.Contains("AS has_prior_closed_act_without_no_show", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("ROW_NUMBER() OVER", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.Contains("ON ac.invnum = c.invnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
         Assert.DoesNotContain("consultation.prfnum = c.prfnum", OdbcTurnosRepository.Sql, StringComparison.Ordinal);
@@ -56,10 +59,12 @@ public sealed class OdbcTurnosRepositoryTests
         table.Columns.Add("feccon", typeof(DateTime));
         table.Columns.Add("feccre", typeof(DateTime));
         table.Columns.Add("fecumv", typeof(DateTime));
+        table.Columns.Add("has_no_show_diagnosis", typeof(bool));
+        table.Columns.Add("has_prior_closed_act_without_no_show", typeof(bool));
         table.Rows.Add(
             42, "PACIENTE PRUEBA", "C01", scheduledAt, DBNull.Value, "N", "TC", "M01", 123,
             true, true, "MEDICO PRUEBA", "CONSULTORIO PRUEBA", 9001, 2, 42, 123, "T",
-            connectedAt, createdAt, modifiedAt);
+            connectedAt, createdAt, modifiedAt, true, true);
 
         using var reader = table.CreateDataReader();
         Assert.True(reader.Read());
@@ -78,5 +83,7 @@ public sealed class OdbcTurnosRepositoryTests
         Assert.Equal(connectedAt, result.ConsultationConnectedAt);
         Assert.Equal(createdAt, result.ConsultationCreatedAt);
         Assert.Equal(modifiedAt, result.ConsultationLastModifiedAt);
+        Assert.True(result.HasNoShowDiagnosis);
+        Assert.True(result.HasPriorClosedActWithoutNoShow);
     }
 }

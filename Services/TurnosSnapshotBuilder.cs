@@ -8,7 +8,8 @@ public sealed class TurnosSnapshotBuilder(
     TurnoStatusPolicy statusPolicy,
     PriorityPolicy priorityPolicy,
     TurnosQueue turnosQueue,
-    IOptions<SiteOptions> siteOptions)
+    IOptions<SiteOptions> siteOptions,
+    ConsultorioExclusionPolicy consultorioExclusionPolicy)
 {
     private readonly TimeZoneInfo _siteTimeZone =
         TimeZoneInfo.FindSystemTimeZoneById(siteOptions.Value.TimeZone);
@@ -23,10 +24,14 @@ public sealed class TurnosSnapshotBuilder(
 
         foreach (var raw in rawItems)
         {
+            var consultorio = string.IsNullOrWhiteSpace(raw.Consultorio) ? "Por confirmar" : raw.Consultorio.Trim();
+            if (consultorioExclusionPolicy.IsExcluded(consultorio))
+            {
+                continue;
+            }
+
             var status = statusPolicy.Normalize(raw, now);
             states[raw.StableId] = status;
-
-            var consultorio = string.IsNullOrWhiteSpace(raw.Consultorio) ? "Por confirmar" : raw.Consultorio.Trim();
             var medico = ToDoctorDisplayName(raw.Medico);
             if (string.IsNullOrWhiteSpace(raw.PublicId))
             {
@@ -55,7 +60,9 @@ public sealed class TurnosSnapshotBuilder(
                 raw.ConsultationLastModifiedAt.HasValue ? ToSiteOffset(raw.ConsultationLastModifiedAt.Value) : null,
                 raw.ConsultationId,
                 raw.ConsultationAttemptCount,
-                raw.IsAmanecida));
+                raw.IsAmanecida,
+                raw.HasNoShowDiagnosis,
+                raw.HasPriorClosedActWithoutNoShow));
         }
 
         var orderedCandidates = candidates
@@ -76,16 +83,8 @@ public sealed class TurnosSnapshotBuilder(
             .Where(selection => selection.ShouldAnnounce && selection.StableId.HasValue)
             .Select(selection => selection.StableId!.Value)
             .ToHashSet();
-        var deferredAbsentIds = turnosQueue.GetDeferredAbsentAppointmentIds();
         var publicCandidates = orderedCandidates
             .Where(item => item.Status != TurnoStatus.Cerrado)
-            // Tras los dos avisos, una persona que no tiene llegada registrada
-            // conserva su cita internamente al final de la cola, pero deja de
-            // bloquear el listado público de próximos turnos.
-            .Where(item => !deferredAbsentIds.Contains(item.StableId))
-            // La agenda no pierde citas vencidas: permanecen al final de la
-            // jornada. Las próximas según citdat se muestran primero para no
-            // confundir la lista pública con un registro de ausencias.
             .ToArray();
 
         // Se mantiene primero la prioridad clínica. Dentro de cada prioridad,

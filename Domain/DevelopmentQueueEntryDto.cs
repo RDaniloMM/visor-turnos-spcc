@@ -13,11 +13,6 @@ public sealed record DevelopmentQueueEntryDto(
     int PositionInArea,
     string QueueState,
     bool IsEligibleForCall,
-    int CallAttempts,
-    bool IsAbsent,
-    bool IsRequeueExpired,
-    bool HasReachedMaxAttempts,
     int? PrefacturaNumber,
     bool HasMedicalConsultation,
-    long? ConsultationId,
-    bool IsAwaitingClose);
+    long? ConsultationId);

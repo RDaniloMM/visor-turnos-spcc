@@ -32,8 +32,8 @@ sequenceDiagram
     L-->>V: Detecta el nuevo numcon
     V-->>P: Muestra banner con paciente, consultorio y médico
     V-->>P: Emite aviso sonoro en español latino
-    V-->>P: Repite una vez a los 30 segundos
-    V-->>P: Finaliza el llamado a los 60 segundos
+    V-->>P: Repite una vez a los 20 segundos
+    V-->>P: Finaliza el llamado a los 40 segundos
     M->>L: Continúa, guarda o cierra la atención en LOLCLI
 ```
 
@@ -58,8 +58,8 @@ sequenceDiagram
 - El visor **no llama automáticamente** por la hora de la cita.
 - El médico conserva la decisión clínica y operativa: al abrir al paciente en LOLCLI se genera el `numcon` que activa el llamado.
 - Un llamado activo no es interrumpido por otro. La TV tiene un único audio y procesa los llamados habilitados en orden.
-- Cada llamado permanece 60 segundos y tiene una única repetición a los 30 segundos.
-- Si el paciente no se presenta, el visor no lo reencola ni modifica LOLCLI. El médico define el siguiente paso desde su módulo.
+- Cada llamado permanece 40 segundos y tiene una única repetición a los 20 segundos.
+- Al finalizar el visor no determina si el paciente se presentó ni modifica LOLCLI. El médico define el siguiente paso desde su módulo.
 - El visor solo consulta LOLCLI: no escribe, no crea prefacturas y no cierra atenciones.
 
 ## Guion de demostración para médicos (3 minutos)
@@ -69,7 +69,7 @@ sequenceDiagram
 3. En LOLCLI, abra un paciente de prueba o el siguiente paciente real autorizado.
 4. Explique que LOLCLI crea el nuevo `numcon` y que el visor lo detecta sin que el médico haga nada adicional en la TV.
 5. Muestre el banner, el consultorio y la locución: “Paciente [nombre], pase al consultorio [nombre]”.
-6. Indique que la voz está configurada para español latino y que el llamado dura un minuto, con una repetición a los 30 segundos.
+6. Indique que la voz está configurada para español latino y que el llamado dura 40 segundos, con una repetición a los 20 segundos.
 7. Vuelva a LOLCLI para guardar/cerrar la atención o continuar con el siguiente paciente. Recalque que todo el control asistencial continúa dentro de LOLCLI.
 
 ## Guion para soporte (2 minutos)
@@ -84,4 +84,3 @@ sequenceDiagram
 ## Mensaje de cierre para la exposición
 
 > El visor ordena la comunicación en sala de espera. El médico conserva la decisión de llamar desde LOLCLI; la televisión solo hace visible y audible esa decisión para el paciente.
-

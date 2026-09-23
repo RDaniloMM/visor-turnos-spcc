@@ -16,18 +16,20 @@ const calledLabel = required("called-label");
 const calledTurn = required("called-turn");
 const calledRoom = required("called-room");
 const calledDoctor = required("called-doctor");
-const areaPanelElement = document.querySelector(".area-panel");
-if (!areaPanelElement)
-    throw new Error("Panel de consultorio requerido no encontrado");
-const areaPanel = areaPanelElement;
-const areaRoom = required("area-room");
-const areaDoctor = required("area-doctor");
-const areaStatus = required("area-status");
-const areaCounter = required("area-counter");
-const areaList = required("area-list");
-const areaEmpty = required("area-empty");
-const generalList = required("general-list");
-const generalEmpty = required("general-empty");
+const createAreaPanelState = (panelId, roomId, doctorId, statusId, counterId, listId, emptyId) => ({
+    panel: required(panelId),
+    room: required(roomId),
+    doctor: required(doctorId),
+    status: required(statusId),
+    counter: required(counterId),
+    list: required(listId),
+    empty: required(emptyId),
+    slides: [],
+    slideIndex: 0,
+    timer: null
+});
+const primaryAreaPanel = createAreaPanelState("area-panel", "area-room", "area-doctor", "area-status", "area-counter", "area-list", "area-empty");
+const secondaryAreaPanel = createAreaPanelState("area-panel-secondary", "area-room-secondary", "area-doctor-secondary", "area-status-secondary", "area-counter-secondary", "area-list-secondary", "area-empty-secondary");
 const freshness = required("freshness");
 const readPositiveInteger = (value, fallback) => {
     const parsed = Number.parseInt(value ?? "", 10);
@@ -44,9 +46,6 @@ const snapshotStorageKey = "visor-turnos:v2:last-public-snapshot";
 const announcementStorageKey = "visor-turnos:v2:last-announced-version";
 let currentSnapshot = null;
 let hubConnected = false;
-let areaSlides = [];
-let areaSlideIndex = 0;
-let areaTimer = null;
 let waitingMessageIndex = 0;
 let waitingMessageTimer = null;
 let lastConnectionNotice = "";
@@ -175,41 +174,6 @@ function createAreaRow(item, isNext) {
     row.append(turnCell, createStatus(item));
     return row;
 }
-function createGeneralRow(item, position) {
-    const row = document.createElement("div");
-    row.className = "general-row";
-    row.classList.toggle("general-row--active", item.isActiveCall);
-    row.classList.toggle("general-row--next", position === 1 && !item.isActiveCall);
-    row.setAttribute("role", "listitem");
-    row.setAttribute("aria-label", `Turno ${position}: ${item.publicId}`);
-    const number = document.createElement("span");
-    number.className = "queue-order";
-    number.textContent = String(position);
-    number.setAttribute("aria-hidden", "true");
-    const turnCell = document.createElement("span");
-    turnCell.className = "turn-cell";
-    if (position === 1 && !item.isActiveCall) {
-        const nextCue = document.createElement("span");
-        nextCue.className = "next-cue";
-        nextCue.textContent = "Siguiente en agenda";
-        turnCell.append(nextCue);
-    }
-    const id = document.createElement("strong");
-    id.className = "turn-id";
-    id.textContent = naturalName(item.publicId);
-    turnCell.append(id);
-    const destination = document.createElement("span");
-    destination.className = "destination-cell";
-    const doctor = document.createElement("strong");
-    doctor.className = "doctor-name";
-    doctor.textContent = doctorDisplayName(item.medico);
-    const room = document.createElement("span");
-    room.className = "destination-room";
-    room.textContent = roomDisplayName(item.consultorio);
-    destination.append(room, doctor);
-    row.append(number, turnCell, destination, createStatus(item));
-    return row;
-}
 function buildAreaSlides(items) {
     const groups = new Map();
     for (const item of items) {
@@ -241,18 +205,18 @@ function buildAreaSlides(items) {
     }
     return slides;
 }
-function renderAreaSlide() {
-    if (areaSlides.length === 0) {
-        areaRoom.textContent = "Esperando habilitación médica";
-        areaDoctor.textContent = "Aparecerá al detectarse un nuevo número de consulta";
-        areaStatus.hidden = true;
-        areaPanel.className = "board-panel area-panel area-panel--empty";
-        areaCounter.textContent = "—";
-        areaList.replaceChildren();
-        areaEmpty.hidden = false;
+function renderAreaSlide(panelState) {
+    if (panelState.slides.length === 0) {
+        panelState.room.textContent = "Esperando habilitación médica";
+        panelState.doctor.textContent = "Aparecerá al detectarse un nuevo número de consulta";
+        panelState.status.hidden = true;
+        panelState.panel.className = "board-panel area-panel area-panel--empty";
+        panelState.counter.textContent = "—";
+        panelState.list.replaceChildren();
+        panelState.empty.hidden = false;
         return;
     }
-    const slide = areaSlides[areaSlideIndex % areaSlides.length];
+    const slide = panelState.slides[panelState.slideIndex % panelState.slides.length];
     if (!slide)
         return;
     const fragment = document.createDocumentFragment();
@@ -262,33 +226,44 @@ function renderAreaSlide() {
         nextAssigned ||= isNext;
         fragment.append(createAreaRow(item, isNext));
     });
-    areaRoom.textContent = roomDisplayName(slide.consultorio);
-    areaDoctor.textContent = doctorDisplayName(slide.medico);
-    areaStatus.textContent = slide.status.toUpperCase();
-    areaStatus.className = `area-status area-status--${slide.status}`;
-    areaStatus.hidden = false;
-    areaPanel.className = `board-panel area-panel area-panel--${slide.status}`;
-    areaCounter.textContent = `${areaSlideIndex + 1} / ${areaSlides.length}`;
-    areaList.replaceChildren(fragment);
-    areaEmpty.hidden = true;
+    panelState.room.textContent = roomDisplayName(slide.consultorio);
+    panelState.doctor.textContent = doctorDisplayName(slide.medico);
+    panelState.status.textContent = slide.status.toUpperCase();
+    panelState.status.className = `area-status area-status--${slide.status}`;
+    panelState.status.hidden = false;
+    panelState.panel.className = `board-panel area-panel area-panel--${slide.status}`;
+    panelState.counter.textContent = `${panelState.slideIndex + 1} / ${panelState.slides.length}`;
+    panelState.list.replaceChildren(fragment);
+    panelState.empty.hidden = true;
 }
-function restartAreaRotation(items) {
-    if (areaTimer !== null) {
-        window.clearInterval(areaTimer);
-        areaTimer = null;
-    }
-    areaSlides = buildAreaSlides(items);
+function restartAreaRotation(panelState, items) {
+    const previousSlide = panelState.slides[panelState.slideIndex % Math.max(1, panelState.slides.length)];
+    panelState.slides = buildAreaSlides(items);
     const activeCall = items.find(item => item.isActiveCall) ?? null;
     const activeSlideIndex = activeCall
-        ? areaSlides.findIndex(slide => slide.items.includes(activeCall) ||
+        ? panelState.slides.findIndex(slide => slide.items.includes(activeCall) ||
             (slide.consultorio === activeCall.consultorio && slide.medico === activeCall.medico))
         : -1;
-    areaSlideIndex = activeSlideIndex >= 0 ? activeSlideIndex : 0;
-    renderAreaSlide();
-    if (!activeCall && areaSlides.length > 1) {
-        areaTimer = window.setInterval(() => {
-            areaSlideIndex = (areaSlideIndex + 1) % areaSlides.length;
-            renderAreaSlide();
+    const preservedSlideIndex = previousSlide
+        ? panelState.slides.findIndex(slide => slide.consultorio === previousSlide.consultorio && slide.medico === previousSlide.medico)
+        : -1;
+    panelState.slideIndex = activeSlideIndex >= 0
+        ? activeSlideIndex
+        : preservedSlideIndex >= 0
+            ? preservedSlideIndex
+            : 0;
+    renderAreaSlide(panelState);
+    if (activeCall || panelState.slides.length <= 1) {
+        if (panelState.timer !== null) {
+            window.clearInterval(panelState.timer);
+            panelState.timer = null;
+        }
+        return;
+    }
+    if (panelState.timer === null) {
+        panelState.timer = window.setInterval(() => {
+            panelState.slideIndex = (panelState.slideIndex + 1) % panelState.slides.length;
+            renderAreaSlide(panelState);
         }, areaRotationSeconds * 1_000);
     }
 }
@@ -346,18 +321,16 @@ function isInCurrentSession(item, now) {
     return sessionStartHour !== null && sessionEndHour !== null &&
         scheduled.getHours() >= sessionStartHour && scheduled.getHours() < sessionEndHour;
 }
-function renderGeneral(items) {
+function restartAreaPanels(items) {
     const now = new Date();
-    const upcoming = items
-        .filter(item => !item.isActiveCall && item.estado !== "en-atencion")
-        .filter(item => scheduledTimestamp(item) >= now.getTime())
-        .filter(item => isInCurrentSession(item, now))
-        .sort((left, right) => scheduledTimestamp(left) - scheduledTimestamp(right))
-        .slice(0, maxVisibleRows);
-    const fragment = document.createDocumentFragment();
-    upcoming.forEach((item, index) => fragment.append(createGeneralRow(item, index + 1)));
-    generalList.replaceChildren(fragment);
-    generalEmpty.hidden = upcoming.length > 0;
+    const visibleItems = items.filter(item => item.isActiveCall || (item.estado !== "en-atencion" && isInCurrentSession(item, now)));
+    const areaKeys = [...new Set(visibleItems.map(item => `${item.consultorio}\u001f${item.medico}`))]
+        .sort((left, right) => left.localeCompare(right, "es-PE"));
+    const splitIndex = Math.ceil(areaKeys.length / 2);
+    const primaryKeys = new Set(areaKeys.slice(0, splitIndex));
+    const secondaryKeys = new Set(areaKeys.slice(splitIndex));
+    restartAreaRotation(primaryAreaPanel, visibleItems.filter(item => primaryKeys.has(`${item.consultorio}\u001f${item.medico}`)));
+    restartAreaRotation(secondaryAreaPanel, visibleItems.filter(item => secondaryKeys.has(`${item.consultorio}\u001f${item.medico}`)));
 }
 function renderFreshness(generatedAt) {
     const generated = new Date(generatedAt);
@@ -513,8 +486,7 @@ function renderSnapshot(snapshot) {
         turnosMain.classList.remove("main--no-callout");
         startWaitingMessageRotation();
     }
-    renderGeneral(snapshot.items);
-    restartAreaRotation(snapshot.items);
+    restartAreaPanels(snapshot.items);
     renderFreshness(snapshot.generatedAt);
     const announcedVersion = Number.parseInt(sessionStorage.getItem(announcementStorageKey) ?? "-1", 10);
     const announcedTurn = snapshot.items.find(item => item.shouldAnnounce && item.isActiveCall);

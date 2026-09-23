@@ -22,11 +22,12 @@ var snapshot = await ReadSourceAsync(dayStart, dayEndExclusive);
 await EnsureDatabaseAsync();
 await ReplaceSnapshotAsync(snapshot);
 Console.WriteLine(
-    "Snapshot de desarrollo creado: {0} citas, {1} médicos, {2} consultorios y {3} consultas.",
+    "Snapshot de desarrollo creado: {0} citas, {1} médicos, {2} consultorios, {3} consultas y {4} ausencias documentadas.",
     snapshot.Citas.Count,
     snapshot.Medicos.Count,
     snapshot.Consultorios.Count,
-    snapshot.Consultas.Count);
+    snapshot.Consultas.Count,
+    snapshot.NoShowDiagnosticos.Count);
 
 static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayEndExclusive)
 {
@@ -88,7 +89,23 @@ static async Task<SnapshotData> ReadSourceAsync(DateTime dayStart, DateTime dayE
         reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), ReadString(reader, 3),
         ReadDate(reader, 4), ReadDate(reader, 5), ReadDate(reader, 6)));
 
-    return new SnapshotData(citas, medicos, consultorios, consultas);
+    // La copia local solo conserva el indicador requerido por el visor; no
+    // exporta los demás diagnósticos ni su descripción.
+    var noShowDiagnosticos = await ReadAsync(source, """
+        SELECT DISTINCT diagnosis.numcon, diagnosis.diacod
+        FROM dbo.am_diagnosticos AS diagnosis
+        INNER JOIN dbo.am_consulta AS consultation ON consultation.numcon = diagnosis.numcon
+        INNER JOIN dbo.citas AS c ON c.invnum = consultation.invnum
+        WHERE c.siscod = ? AND c.citdat >= ? AND c.citdat < ?
+          AND UPPER(LTRIM(RTRIM(COALESCE(diagnosis.diacod, '')))) = 'Z53.8';
+        """, command =>
+    {
+        Add(command, OdbcType.Int, SiteCode);
+        Add(command, OdbcType.DateTime, dayStart);
+        Add(command, OdbcType.DateTime, dayEndExclusive);
+    }, reader => new NoShowDiagnostico(reader.GetInt32(0), ReadString(reader, 1) ?? "Z53.8"));
+
+    return new SnapshotData(citas, medicos, consultorios, consultas, noShowDiagnosticos);
 }
 
 static async Task EnsureDatabaseAsync()
@@ -144,6 +161,7 @@ static async Task ReplaceSnapshotAsync(SnapshotData snapshot)
     using var transaction = target.BeginTransaction();
 
     await ExecuteAsync(target, """
+        DROP TABLE IF EXISTS dbo.am_diagnosticos;
         DROP TABLE IF EXISTS dbo.am_consulta;
         DROP TABLE IF EXISTS dbo.citas;
         DROP TABLE IF EXISTS dbo.consultorios;
@@ -180,6 +198,10 @@ static async Task ReplaceSnapshotAsync(SnapshotData snapshot)
             feccre datetime2(3) NULL,
             fecumv datetime2(3) NULL
         );
+        CREATE TABLE dbo.am_diagnosticos (
+            numcon int NOT NULL PRIMARY KEY,
+            diacod varchar(20) NOT NULL
+        );
         CREATE INDEX IX_citas_site_date ON dbo.citas (siscod, citdat, invnum);
         CREATE INDEX IX_am_consulta_cita ON dbo.am_consulta (invnum, feccon, numcon);
         """, transaction);
@@ -208,6 +230,11 @@ static async Task ReplaceSnapshotAsync(SnapshotData snapshot)
         await ExecuteAsync(target, "INSERT INTO dbo.am_consulta (numcon, invnum, prfnum, stacon, feccon, feccre, fecumv) VALUES (?, ?, ?, ?, ?, ?, ?);", transaction,
             consulta.ConsultationId, consulta.AppointmentId, consulta.PrefacturaNumber, consulta.Status,
             consulta.ConnectedAt, consulta.CreatedAt, consulta.LastModifiedAt);
+    }
+    foreach (var diagnostico in snapshot.NoShowDiagnosticos)
+    {
+        await ExecuteAsync(target, "INSERT INTO dbo.am_diagnosticos (numcon, diacod) VALUES (?, ?);", transaction,
+            diagnostico.ConsultationId, diagnostico.Code);
     }
 
     transaction.Commit();
@@ -262,8 +289,14 @@ static string? ReadString(DbDataReader reader, int ordinal) => reader.IsDBNull(o
 static int? ReadInt(DbDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
 static DateTime? ReadDate(DbDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetDateTime(ordinal);
 
-sealed record SnapshotData(List<Cita> Citas, List<Medico> Medicos, List<Consultorio> Consultorios, List<Consulta> Consultas);
+sealed record SnapshotData(
+    List<Cita> Citas,
+    List<Medico> Medicos,
+    List<Consultorio> Consultorios,
+    List<Consulta> Consultas,
+    List<NoShowDiagnostico> NoShowDiagnosticos);
 sealed record Cita(int Invnum, string? PatientName, string? MedicalCode, string? RoomCode, DateTime ScheduledAt, DateTime? ArrivedAt, string? Status, string? CitedTypeCode, int? PrefacturaNumber, string? Observation, int SiteCode);
 sealed record Medico(string? Code, string? Name, string? RoomCode);
 sealed record Consultorio(string? Code, string? Name);
 sealed record Consulta(int ConsultationId, int AppointmentId, int PrefacturaNumber, string? Status, DateTime? ConnectedAt, DateTime? CreatedAt, DateTime? LastModifiedAt);
+sealed record NoShowDiagnostico(int ConsultationId, string Code);

@@ -1,6 +1,6 @@
 # Flujo operativo de llamados
 
-Ultima revision: 2026-09-18.
+Ultima revision: 2026-09-22.
 
 ## Principio rector
 
@@ -26,18 +26,18 @@ La consulta toma únicamente el último acto de cada cita: `TOP (1)` ordenado po
 2. La cita debe existir en `citas` para Cuajone y la jornada actual. Al seleccionar ese paciente, LOLCLI crea un nuevo `am_consulta.numcon`.
 3. Al arrancar, el visor toma una línea base silenciosa de los `numcon` ya existentes. El sondeo central solo considera habilitante un identificador distinto detectado después de esa línea base, normalmente en un máximo de tres segundos.
 4. Si no hay otro anuncio en curso, la TV muestra el banner, pronuncia el llamado y marca al paciente como `Llamando`.
-5. A los 30 segundos se realiza una única repetición de voz.
-6. A los 60 segundos termina banner y voz. Ese `numcon` queda consumido: no se reutiliza para un segundo ciclo.
+5. A los 20 segundos se realiza una única repetición de voz.
+6. A los 40 segundos termina banner y voz. Ese `numcon` queda consumido: no se reutiliza para un segundo ciclo.
 7. El médico puede crear y aceptar una prefactura en LOLCLI; esto actualiza `citas.prfnum`, pero no es condición del aviso. En el flujo confirmado de cierre, el último acto pasa a `P` y la cita a `S`; la combinación `P/S` confirma el término. El visor no llama al siguiente por su cuenta.
-8. Para llamar a otro paciente, el médico vuelve a seleccionarlo en LOLCLI, creando otro `numcon`. Si previamente guardó/cerró una cita, puede reabrirla desde LOLCLI cuando la atención lo requiera: el nuevo `numcon` abierto prevalece para el visor y autoriza un nuevo llamado. El visor nunca reabre una cita por su cuenta.
+8. Para llamar a otro paciente, el médico vuelve a seleccionarlo en LOLCLI, creando otro `numcon`. Si reabre una cita que ya tuvo un acto guardado sin ausencia documentada, el visor trata esa reapertura como ambigua y no la anuncia automáticamente: el paciente debe acercarse o tocar la puerta. El visor nunca reabre una cita por su cuenta.
 
-## Paciente ausente y reintentos
+## Finalización y nueva decisión médica
 
-Si vence el minuto y el último acto todavía no está cerrado, el consultorio permanece ocupado para ese acto. El visor no reencola ni crea registros en LOLCLI.
+Al terminar los 40 segundos, el visor no determina ni muestra si el paciente asistió o estuvo ausente. Tampoco reencola, cierra ni crea registros en LOLCLI.
 
-El médico debe guardar/cerrar el acto pendiente y, si decide volver a llamar al mismo paciente, seleccionarlo nuevamente en LOLCLI. Ese segundo ingreso crea otro `numcon` y genera un nuevo ciclo. El contador se lleva por `invnum`; se permiten como máximo cuatro `numcon` llamados. El quinto queda excluido.
+El médico decide el siguiente paso desde LOLCLI. Un nuevo `numcon` solo inicia otro ciclo automático si no existe un acto previo guardado de esa cita sin ausencia documentada. Abrir un acto médico no es un botón de rellamado: en el caso ambiguo, la pantalla queda silenciosa y el paciente debe acercarse o tocar la puerta. Un llamado automático siempre depende del nuevo `numcon`, no de que la hora programada ya haya llegado.
 
-Los reintentos se admiten hasta las 12:00 durante la mañana y hasta las 17:30 durante la tarde. Un llamado manual inicial depende del nuevo `numcon`, no de que la hora programada ya haya llegado.
+Si el último acto contiene el diagnóstico `Z53.8` (**Procedimiento no realizado por otras razones**), el médico documentó que no corresponde mantener el llamado. El visor lo detecta como un booleano interno, cancela un llamado que estuviera activo y no inicia otro para ese `numcon`. No lee, registra ni publica la descripción diagnóstica. Un acto anterior con `Z53.8` no cuenta como atención previa: si después se crea un acto nuevo sin ese código, puede volver a anunciarse, salvo que exista además otro acto anterior guardado sin `Z53.8`.
 
 ## Orden y concurrencia
 
@@ -55,7 +55,9 @@ Un reinicio del visor no debe repetir anuncios: los actos que ya estaban abierto
 
 El sondeo trabaja por sede fija Cuajone (`siscod = 1`) y por jornada. La pantalla pública no exhibe cerrados (`P/S`) ni datos técnicos. El panel **Próximos turnos** muestra citas agendadas abiertas cuya `citdat` aún no haya pasado y pertenezca a la jornada vigente: mañana desde las 07:00 hasta antes de las 12:00, y tarde desde las 14:00 hasta antes de las 18:00. Durante el receso no anticipa citas de la tarde. No filtra por `obscit` y ordena ascendentemente por hora. Una cita vencida no se elimina de LOLCLI ni pierde la posibilidad de que el médico la abra manualmente; simplemente deja de presentarse como próxima. EMA y amanecida solo intervienen al priorizar actos que el médico ya habilitó para un llamado; no cambian el orden de esta agenda pública.
 
-Solo hay dos estados públicos: `Llamando` y `Próximo`. `numcon`, `prfnum`, `stacon`, intentos y ausencias son visibles únicamente en `/simulador` cuando se ejecuta en `DevelopmentSnapshot`.
+Los consultorios configurados en `Queue:ExcludedConsultorios` no se publican, anuncian ni incorporan a la cola interna. La configuración vigente excluye `MEDICINA DEL TRABAJO` y `EMERGENCIA`/`EMERGENCIAS`.
+
+Solo hay dos estados públicos: `Llamando` y `Próximo`. `numcon`, `prfnum` y `stacon` son visibles únicamente en `/simulador` cuando se ejecuta en `DevelopmentSnapshot`.
 
 ## Simulador LocalDB
 
@@ -63,7 +65,7 @@ El simulador replica el flujo sin escribir en LOLCLI:
 
 - **Llamar** crea un `numcon` nuevo. **Crear prefactura** es opcional y actualiza únicamente `citas.prfnum`, como en LOLCLI.
 - **Guardar** cambia el último acto a `P` y la cita a `S`.
-- **Llamar** después de guardar genera otro `numcon`, incluso para el mismo paciente.
+- **Llamar** después de guardar genera otro `numcon`, incluso para el mismo paciente; la regla de reapertura ambigua evita que se anuncie automáticamente.
 - **Restablecer** elimina los actos de prueba de esa cita local y vuelve a dejarla en `N`/prefactura `0`.
 
 La tabla técnica del simulador muestra todas las citas de la jornada, incluidas las cerradas y las horas ya pasadas. La TV no es una copia de esa tabla: solo muestra la cola pública vigente.

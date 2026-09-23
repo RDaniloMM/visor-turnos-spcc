@@ -19,4 +19,6 @@ public sealed record TurnoRaw(
     DateTime? ConsultationLastModifiedAt = null,
     bool IsAmanecida = false,
     long? ConsultationId = null,
-    int ConsultationAttemptCount = 0);
+    int ConsultationAttemptCount = 0,
+    bool HasNoShowDiagnosis = false,
+    bool HasPriorClosedActWithoutNoShow = false);

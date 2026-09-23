@@ -48,6 +48,25 @@ public sealed class TurnosSnapshotBuilderTests
     }
 
     [Fact]
+    public void ExcludesPatientsFromConfiguredConsultorioBeforeTheyReachTheQueue()
+    {
+        var builder = CreateBuilder(
+            new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true },
+            ["Medicina del Trabajo", "Emergencia"]);
+        var at = new DateTime(2026, 9, 22, 9, 0, 0);
+        var result = builder.Build(
+            [
+                new TurnoRaw(1, "NO VISIBLE", "MEDICINA   DEL   TRABAJO", "Medico", at, at, "N", null, null, null, false),
+                new TurnoRaw(2, "TAMPOCO VISIBLE", "EMERGENCIA", "Medico", at, at, "N", null, null, null, false)
+            ],
+            new Dictionary<long, TurnoStatus>(),
+            new DateTimeOffset(at, TimeSpan.Zero));
+
+        Assert.Empty(result.Items);
+        Assert.Empty(result.States);
+    }
+
+    [Fact]
     public void MedicalExamIsPriorityOneAndPrecedesEarlierRegularAppointment()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
@@ -151,28 +170,28 @@ public sealed class TurnosSnapshotBuilderTests
     }
 
     [Fact]
-    public void CalledPatientWithoutRegisteredArrivalIsRemovedFromThePublicUpcomingListsAfterTheMinute()
+    public void CalledPatientRemainsInThePublicSnapshotAfterTheCallEnds()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var scheduled = new DateTime(2026, 9, 16, 9, 0, 0);
         var raw = new TurnoRaw(
-            1, "AUSENTE", "C1", "Medico", scheduled, null, "N", 0, null, null, false,
+            1, "PENDIENTE", "C1", "Medico", scheduled, null, "N", 0, null, null, false,
             HasMedicalConsultation: true,
             ConsultationStatus: "T",
             ConsultationId: 100);
 
         // La primera lectura es la línea base; el acto creado después inicia
-        // el llamado y aún aparece durante sus 60 segundos reglamentarios.
+        // el llamado. Al terminar, el visor no infiere una ausencia.
         builder.Build([], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled, TimeSpan.Zero));
         var duringCall = builder.Build([raw], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled.AddSeconds(3), TimeSpan.Zero));
-        var afterNoShow = builder.Build([raw], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled.AddSeconds(63), TimeSpan.Zero));
+        var afterCall = builder.Build([raw], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(scheduled.AddSeconds(43), TimeSpan.Zero));
 
         Assert.Single(duringCall.Items);
-        Assert.Empty(afterNoShow.Items);
+        Assert.Single(afterCall.Items);
     }
 
     [Fact]
-    public void NewOpenNumconCanReactivateAndCallAnAppointmentPreviouslyClosedInLolcli()
+    public void ReopenedActAfterAPriorClosedNonNoShowActDoesNotCallAutomatically()
     {
         var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
         var at = new DateTime(2026, 9, 21, 11, 30, 0);
@@ -183,10 +202,11 @@ public sealed class TurnosSnapshotBuilderTests
             ConsultationId: 100);
         var reopenedByDoctor = closed with
         {
-            // El médico abre nuevamente al paciente en LOLCLI. La cita puede
-            // conservar S de forma temporal, pero el numcon nuevo T manda.
+            // El médico abre nuevamente el acto. Es ambiguo si se trata de
+            // una corrección o de una nueva llamada, por eso no se anuncia.
             ConsultationStatus = "T",
-            ConsultationId = 101
+            ConsultationId = 101,
+            HasPriorClosedActWithoutNoShow = true
         };
 
         var beforeReopen = builder.Build([closed], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
@@ -196,32 +216,52 @@ public sealed class TurnosSnapshotBuilderTests
             new DateTimeOffset(at.AddSeconds(3), TimeSpan.Zero));
 
         Assert.Empty(beforeReopen.Items);
-        var called = Assert.Single(afterReopen.Items);
-        Assert.Equal("REACTIVABLE", called.PublicId);
-        Assert.Equal("en-espera", called.Estado);
-        Assert.True(called.IsActiveCall);
-        Assert.True(called.ShouldAnnounce);
+        var item = Assert.Single(afterReopen.Items);
+        Assert.Equal("REACTIVABLE", item.PublicId);
+        Assert.Equal("en-espera", item.Estado);
+        Assert.False(item.IsActiveCall);
+        Assert.False(item.ShouldAnnounce);
     }
 
-    private static TurnosSnapshotBuilder CreateBuilder(BusinessRulesOptions rules)
+    [Fact]
+    public void NoShowDiagnosisPreventsTheNewActFromCalling()
+    {
+        var builder = CreateBuilder(new BusinessRulesOptions { ClosedStatusCodes = ["S"], ZeroPrefacturaMeansAbsent = true });
+        var at = new DateTime(2026, 9, 22, 11, 30, 0);
+        var noShow = new TurnoRaw(
+            1, "AUSENCIA DOCUMENTADA", "C1", "Medico", at, at, "N", 0, null, null, false,
+            HasMedicalConsultation: true,
+            ConsultationStatus: "T",
+            ConsultationId: 100,
+            HasNoShowDiagnosis: true);
+
+        builder.Build([], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at, TimeSpan.Zero));
+        var result = builder.Build([noShow], new Dictionary<long, TurnoStatus>(), new DateTimeOffset(at.AddSeconds(3), TimeSpan.Zero));
+
+        var item = Assert.Single(result.Items);
+        Assert.False(item.IsActiveCall);
+        Assert.False(item.ShouldAnnounce);
+    }
+
+    private static TurnosSnapshotBuilder CreateBuilder(
+        BusinessRulesOptions rules,
+        string[]? excludedConsultorios = null)
     {
         var ruleOptions = Microsoft.Extensions.Options.Options.Create(rules);
         var status = new TurnoStatusPolicy(new PrefacturaPolicy(ruleOptions), ruleOptions);
+        var queueOptions = Microsoft.Extensions.Options.Options.Create(new QueueOptions
+        {
+            RepeatCallAnnouncementSeconds = 20,
+            CalledDisplaySeconds = 40,
+            ExcludedConsultorios = excludedConsultorios ?? []
+        });
         return new TurnosSnapshotBuilder(
             status,
             new PriorityPolicy(
                 ruleOptions,
                 Microsoft.Extensions.Options.Options.Create(new PriorityOptions())),
-            new TurnosQueue(
-                Microsoft.Extensions.Options.Options.Create(new QueueOptions { CalledDisplaySeconds = 60 }),
-                Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }),
-                Microsoft.Extensions.Options.Options.Create(new ScheduleOptions
-                {
-                    MorningStartHour = 7,
-                    RecessStartHour = 12,
-                    AfternoonStartHour = 14,
-                    DayEndHour = 18
-                })),
-            Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }));
+            new TurnosQueue(queueOptions),
+            Microsoft.Extensions.Options.Options.Create(new SiteOptions { Code = 1, DisplayName = "Test", TimeZone = "UTC" }),
+            new ConsultorioExclusionPolicy(queueOptions));
     }
 }

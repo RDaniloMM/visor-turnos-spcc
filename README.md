@@ -12,7 +12,7 @@ Aplicacion ASP.NET Core Razor Pages para una pantalla de sala de espera. El serv
 - Cada llamado consume un `am_consulta.numcon` nuevo asociado por `invnum`; no espera la prefactura. Al iniciar, el worker toma los `numcon` existentes como línea base silenciosa, por lo que un reinicio no repite llamados. `P/S` confirma el cierre de la cita, pero el siguiente paciente requiere que el médico lo habilite nuevamente en LOLCLI. La prefactura se conserva como dato administrativo de `citas`, no como requisito del aviso ni como prueba suficiente de cierre.
 - Por aprobacion expresa del responsable, el modo productivo usa `pacnam` como identificador visible. No se muestran historias clinicas, prefacturas ni observaciones crudas.
 
-El flujo completo de selección médica, anuncios, ausencias, prioridades y simulación está documentado en [docs/flujo-llamados.md](docs/flujo-llamados.md).
+El flujo completo de selección médica, anuncios, prioridades y simulación está documentado en [docs/flujo-llamados.md](docs/flujo-llamados.md).
 
 Rutas principales: `/turnos` es la pantalla pública; `/simulador` solo existe al iniciar con `development-snapshot` y usa LocalDB. Consulta la sección [Rutas de desarrollo y pruebas](docs/flujo-llamados.md#rutas-de-desarrollo-y-pruebas) antes de ejecutar acciones de simulación.
 
