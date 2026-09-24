@@ -9,9 +9,10 @@
       C:\inetpub\publish-ilo
       C:\inetpub\publish-toquepala
 
-    La configuracion local .env de cada sitio se conserva. Si la carpeta no tiene
-    .env, se copia el fragmento no secreto deploy/sites/<sede>.env; el operador debe
-    agregar ConnectionStrings__LolcliOdbc antes de activar el sitio.
+    La configuracion local .env de cada sitio se conserva, pero las claves no secretas
+    Site__Code, Site__DisplayName y Site__TimeZone se sincronizan siempre desde
+    deploy/sites/<sede>.env. La cadena ConnectionStrings__LolcliOdbc y cualquier otra
+    configuracion local no se modifican.
 
     Para una actualizacion de produccion use normalmente Deploy-Production.ps1,
     porque agrega backup, app_offline, reciclado del Application Pool, smoke test y
@@ -56,6 +57,64 @@ function Resolve-AbsolutePath {
     }
 
     return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+}
+
+function Sync-SiteEnvironment {
+    param(
+        [string]$FragmentPath,
+        [string]$DestinationPath
+    )
+
+    $siteKeys = @("Site__Code", "Site__DisplayName", "Site__TimeZone")
+    $siteValues = @{}
+
+    foreach ($line in [System.IO.File]::ReadAllLines($FragmentPath)) {
+        if ($line -match '^\s*([^#=][^=]*)=(.*)$') {
+            $key = $Matches[1].Trim()
+            if ($key -in $siteKeys) {
+                $siteValues[$key] = $Matches[2]
+            }
+        }
+    }
+
+    foreach ($key in $siteKeys) {
+        if (-not $siteValues.ContainsKey($key)) {
+            throw "Falta $key en el fragmento de sede: $FragmentPath"
+        }
+    }
+
+    $existingLines = if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+        [System.IO.File]::ReadAllLines($DestinationPath)
+    } else {
+        @()
+    }
+
+    $result = New-Object System.Collections.Generic.List[string]
+    $writtenKeys = @{}
+
+    foreach ($line in $existingLines) {
+        if ($line -match '^\s*([^#=][^=]*)=(.*)$') {
+            $key = $Matches[1].Trim()
+            if ($siteValues.ContainsKey($key)) {
+                if (-not $writtenKeys.ContainsKey($key)) {
+                    $result.Add("$key=$($siteValues[$key])")
+                    $writtenKeys[$key] = $true
+                }
+                continue
+            }
+        }
+
+        $result.Add($line)
+    }
+
+    foreach ($key in $siteKeys) {
+        if (-not $writtenKeys.ContainsKey($key)) {
+            $result.Add("$key=$($siteValues[$key])")
+        }
+    }
+
+    $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($DestinationPath, $result, $utf8WithoutBom)
 }
 
 if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
@@ -121,11 +180,12 @@ foreach ($name in $siteNames) {
     }
 
     $envDest = Join-Path $dest ".env"
-    if (-not (Test-Path -LiteralPath $envDest -PathType Leaf)) {
-        Copy-Item -LiteralPath $fragment -Destination $envDest -Force
-        Write-Host "    -> .env inicial creado desde deploy/sites/$name.env. Agregue ConnectionStrings__LolcliOdbc."
+    $hadEnvironment = Test-Path -LiteralPath $envDest -PathType Leaf
+    Sync-SiteEnvironment -FragmentPath $fragment -DestinationPath $envDest
+    if ($hadEnvironment) {
+        Write-Host "    -> .env local conservado; claves Site__* sincronizadas para '$name'."
     } else {
-        Write-Host "    -> .env existente conservado."
+        Write-Host "    -> .env inicial creado para '$name'. Agregue ConnectionStrings__LolcliOdbc."
     }
 
     Write-Host "    -> Publicado: $dest (Site:Code=$($definition.Code))"

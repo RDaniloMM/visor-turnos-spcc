@@ -81,9 +81,11 @@ específica de sede (incluida la conexion) vive en el `.env` local de cada sitio
   (`Site__Code`, `Site__DisplayName`, `Site__TimeZone`) y se usa para crear el
   `.env` inicial en `C:\inetpub\publish-<sede>`.
 - En el servidor, el `.env` de la carpeta fisica del sitio es **autoritativo**: se
-  excluye de la limpieza previa, nunca se borra ni se sobreescribe. Agregue ahi la
-  clave `ConnectionStrings__LolcliOdbc` (convencion .NET: `__` se traduce a `:`), o
-  defina una variable de entorno del Application Pool con el mismo nombre y valor.
+  excluye de la limpieza previa. El despliegue actualiza exclusivamente
+  `Site__Code`, `Site__DisplayName` y `Site__TimeZone` desde el fragmento versionado
+  de la sede; conserva sin cambios `ConnectionStrings__LolcliOdbc` y las demas claves
+  locales. Tambien puede definir la conexion como variable de entorno del Application
+  Pool con el mismo nombre y valor.
 
 El `.env` es local de cada servidor y queda ignorado por git. Nunca contiene usuario
 ni contrasena: usa `Trusted_Connection` sobre el DSN:
@@ -102,8 +104,9 @@ powershell -ExecutionPolicy Bypass -File .\deploy\Publish-VisorTurnos.ps1 -Confi
 ```
 
 El script ejecuta `dotnet publish` directamente sobre las carpetas fisicas
-`C:\inetpub\publish-<sede>`. El `.env` existente se conserva; si no existe, se crea
-desde el fragmento no secreto de la sede. Produccion no necesita Node.js en ejecucion:
+`C:\inetpub\publish-<sede>`. El `.env` existente conserva la conexion y las claves
+locales, mientras que las tres claves `Site__*` se sincronizan con la sede correcta.
+Produccion no necesita Node.js en ejecucion:
 el JavaScript compilado queda dentro del resultado publicado.
 
 ## Despliegue automatizado a produccion
@@ -117,9 +120,9 @@ el JavaScript compilado queda dentro del resultado publicado.
    y las pantallas muestren "Actualizando informacion" en lugar de errores parciales.
 3. **Publicacion directa** mediante `dotnet publish --output C:\inetpub\publish-<sede>`.
 4. **Preservacion de la config del servidor**: el `.env` previo de cada aplicacion IIS
-   se excluye de la limpieza, se conserva intacto y nunca se sobreescribe por el
-   fragmento de `deploy/sites/`. En un deploy inicial (sin `.env`
-   previo) se siembra el `.env` del fragmento publicado, y el operador agrega ahi
+   se excluye de la limpieza. La conexion ODBC y las demas claves locales se conservan;
+   solo se sincronizan `Site__Code`, `Site__DisplayName` y `Site__TimeZone` desde el
+   fragmento correspondiente. En un deploy inicial el operador agrega
    `ConnectionStrings__LolcliOdbc` antes de activar.
 5. **Reciclado del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
 6. **Smoke test** sobre `127.0.0.1` y el puerto IIS de cada sede: 8080, 8081 o 8082.
