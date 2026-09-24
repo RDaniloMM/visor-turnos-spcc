@@ -123,10 +123,15 @@ el JavaScript compilado queda dentro del resultado publicado.
    `ConnectionStrings__LolcliOdbc` antes de activar.
 5. **Reciclado del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
 6. **Smoke test** sobre `127.0.0.1` y el puerto IIS de cada sede: 8080, 8081 o 8082.
-   Verifica `/health/ready` (responde `Healthy`) y `/turnos` (HTTP 200). Si falla,
-   restaura el backup y recicla de nuevo.
+   Espera hasta 60 segundos y reintenta `/health/ready` cada 3 segundos mientras el
+   worker obtiene su primer snapshot de LOLCLI; después verifica `/turnos` (HTTP 200).
+   Solo restaura el backup si la aplicación no queda lista dentro de ese plazo.
 
 Uso en el servidor (donde se edita el codigo), publica y despliega todo:
+
+Abra primero **PowerShell como administrador**. Pertenecer al grupo Administradores
+no basta si la consola no fue elevada por UAC; sin elevacion Windows deniega la
+escritura en `C:\inetpub` y el reciclado de los Application Pools.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites cuajone,ilo,toquepala
@@ -147,7 +152,8 @@ powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites i
 Opciones: `-WebRoot <ruta>` (por defecto `C:\inetpub`), `-BackupRoot <ruta>`,
 `-AppPools "sede=nombre;sede=nombre"`, `-SitePorts "sede=puerto;sede=puerto"`,
 `-SmokeTestScheme http|https`, `-SmokeTestHost <host>`, `-SkipIis` y
-`-SkipSmokeTest`. El script exige administrador para reciclar pools; los backups
+`-SkipSmokeTest`. La espera puede ajustarse con `-SmokeTestTimeoutSeconds` y
+`-SmokeTestRetrySeconds`. El script exige administrador para reciclar pools; los backups
 numerados por fecha constituyen el historial de despliegue.
 
 ### Prueba sin IIS

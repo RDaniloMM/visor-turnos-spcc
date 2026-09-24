@@ -64,10 +64,30 @@ param(
     },
     [ValidateSet("http", "https")]
     [string]$SmokeTestScheme = "http",
-    [string]$SmokeTestHost = "127.0.0.1"
+    [string]$SmokeTestHost = "127.0.0.1",
+    [ValidateRange(5, 300)]
+    [int]$SmokeTestTimeoutSeconds = 60,
+    [ValidateRange(1, 30)]
+    [int]$SmokeTestRetrySeconds = 3
 )
 
 $ErrorActionPreference = "Stop"
+
+function Test-IsAdministrator {
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not $SkipIis -and -not (Test-IsAdministrator)) {
+    throw @"
+Este despliegue requiere una consola de PowerShell elevada porque escribe en
+C:\inetpub y recicla Application Pools de IIS.
+
+Cierre esta consola, abra PowerShell con 'Ejecutar como administrador' y repita:
+powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites cuajone,ilo,toquepala
+"@
+}
 
 function ConvertTo-SiteMap {
     param([object]$Value, [string]$ParameterName)
@@ -114,6 +134,54 @@ function Test-HttpEndpoint {
         "${Scheme}://${Hostname}:${Port}${Path}"
     )
     return (& curl.exe @curlArgs 2>$null)
+}
+
+function Wait-ForReadyEndpoint {
+    param(
+        [string]$Scheme,
+        [string]$Hostname,
+        [int]$Port,
+        [string]$OutFile,
+        [int]$TimeoutSeconds,
+        [int]$RetrySeconds
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $attempt = 0
+    $lastCode = "sin respuesta"
+    $lastBody = ""
+
+    do {
+        $attempt++
+        $lastCode = Test-HttpEndpoint -Scheme $Scheme -Hostname $Hostname -Port $Port -Path "/health/ready" -OutFile $OutFile
+        $lastBody = if (Test-Path -LiteralPath $OutFile) {
+            Get-Content -LiteralPath $OutFile -Raw
+        } else {
+            ""
+        }
+
+        if ($lastCode -eq "200" -and $lastBody -match "Healthy") {
+            return @{
+                IsReady = $true
+                Code = $lastCode
+                Body = $lastBody
+                Attempts = $attempt
+            }
+        }
+
+        if ([DateTime]::UtcNow -lt $deadline) {
+            $state = if ([string]::IsNullOrWhiteSpace($lastBody)) { "sin cuerpo" } else { $lastBody.Trim() }
+            Write-Host "    Aun no listo: HTTP $lastCode ($state). Reintento en $RetrySeconds s..."
+            Start-Sleep -Seconds $RetrySeconds
+        }
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    return @{
+        IsReady = $false
+        Code = $lastCode
+        Body = $lastBody
+        Attempts = $attempt
+    }
 }
 
 $AppPools = ConvertTo-SiteMap -Value $AppPools -ParameterName "-AppPools"
@@ -209,10 +277,10 @@ foreach ($name in $siteNames) {
             $pageFile = Join-Path $env:TEMP "visor-page-$name.htm"
             $baseUrl = "${SmokeTestScheme}://${SmokeTestHost}:${port}"
 
-            Write-Host "==> Smoke test: $baseUrl/health/ready"
-            $healthCode = Test-HttpEndpoint -Scheme $SmokeTestScheme -Hostname $SmokeTestHost -Port $port -Path "/health/ready" -OutFile $healthFile
-            $healthBody = if (Test-Path -LiteralPath $healthFile) { Get-Content -LiteralPath $healthFile -Raw } else { "" }
-            $ok = ($healthCode -eq "200" -and $healthBody -match "Healthy")
+            Write-Host "==> Smoke test: $baseUrl/health/ready (espera maxima: $SmokeTestTimeoutSeconds s)"
+            $ready = Wait-ForReadyEndpoint -Scheme $SmokeTestScheme -Hostname $SmokeTestHost -Port $port `
+                -OutFile $healthFile -TimeoutSeconds $SmokeTestTimeoutSeconds -RetrySeconds $SmokeTestRetrySeconds
+            $ok = [bool]$ready.IsReady
 
             if ($ok) {
                 $pageCode = Test-HttpEndpoint -Scheme $SmokeTestScheme -Hostname $SmokeTestHost -Port $port -Path "/turnos" -OutFile $pageFile
@@ -220,10 +288,10 @@ foreach ($name in $siteNames) {
             }
 
             if (-not $ok) {
-                throw "Smoke test fallo para '$name' en $baseUrl (health HTTP $healthCode)."
+                throw "Smoke test fallo para '$name' en $baseUrl despues de $($ready.Attempts) intentos (ultimo health HTTP $($ready.Code))."
             }
 
-            Write-Host "==> Smoke test OK: $baseUrl"
+            Write-Host "==> Smoke test OK: $baseUrl (listo en $($ready.Attempts) intento(s))"
         }
     }
     catch {
