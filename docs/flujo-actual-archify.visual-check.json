@@ -6,7 +6,7 @@
   "status": "pass",
   "visualReview": "pending",
   "artifact": {
-    "path": ".\\docs\\flujo-actual-archify.html",
+    "path": "docs/flujo-actual-archify.html",
     "sha256": "be442c1a848d92e93c4ca29b45a1f01444ac89642a1e3ae17a5c5b651d98d56f",
     "bytes": 817610
   },
