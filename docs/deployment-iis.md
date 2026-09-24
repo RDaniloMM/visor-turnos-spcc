@@ -1,6 +1,6 @@
 # Despliegue en IIS
 
-Documento preparatorio. No se ha realizado ningun despliegue.
+Guia de despliegue para los tres sitios IIS del servidor TIPOWERBI.
 
 ## Precondiciones
 
@@ -14,9 +14,9 @@ Documento preparatorio. No se ha realizado ningun despliegue.
 ## Modelo de multiples sedes
 
 Una sola base y un solo DSN (`LOLCLI9000`); cada despliegue varía únicamente
-`Site:Code` (siscod), `Site:DisplayName` y `Site:TimeZone`. Se publica una vez y se
-generan carpetas autocontenidas, una por sede, cada una con su propio `.env`
-`deploy/sites/<sede>.env` + el `.env` local del servidor (cadena de conexion).
+`Site:Code` (siscod), `Site:DisplayName` y `Site:TimeZone`. Se publica una carpeta
+por sede, cada una con su propio `.env`. Las claves de sede proceden de
+`deploy/sites/<sede>.env`; la conexion ODBC permanece en el `.env` local del servidor.
 
 Las carpetas fisicas confirmadas en el servidor son:
 
@@ -94,8 +94,10 @@ ni contrasena: usa `Trusted_Connection` sobre el DSN:
 ConnectionStrings__LolcliOdbc=DSN=LOLCLI9000;Trusted_Connection=Yes;
 ```
 
-Precedencia: variable de entorno real > `.env` > `appsettings.json`. Para cambiar la
-config de una sede basta editar el `.env` del sitio y reciclar su App Pool.
+Precedencia general: variable de entorno real > `.env` > `appsettings.json`. Las tres
+claves `Site__Code`, `Site__DisplayName` y `Site__TimeZone` son la excepcion: si existen
+en el `.env` fisico del sitio, prevalecen sobre variables globales heredadas. Para
+cambiar la configuracion de una sede, edite su `.env` y reinicie su App Pool.
 
 ## Publicacion
 
@@ -125,11 +127,17 @@ el JavaScript compilado queda dentro del resultado publicado.
    solo se sincronizan `Site__Code`, `Site__DisplayName` y `Site__TimeZone` desde el
    fragmento correspondiente. En un deploy inicial el operador agrega
    `ConnectionStrings__LolcliOdbc` antes de activar.
-5. **Inicio del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
+5. **Inicio del Application Pool y del sitio IIS** (`Visor Turnos Hospital <Sede>`)
+   mediante `appcmd`. Un pool en estado `Started` no inicia un sitio que esta en
+   `Stopped`; el script verifica ambos estados y tambien inicia ambos tras un rollback.
 6. **Smoke test** sobre `127.0.0.1` y el puerto IIS de cada sede: 8080, 8081 o 8082.
    Espera hasta 60 segundos y reintenta `/health/ready` cada 3 segundos mientras el
-   worker obtiene su primer snapshot de LOLCLI; después verifica `/turnos` (HTTP 200).
-   Solo restaura el backup si la aplicación no queda lista dentro de ese plazo.
+   worker obtiene su primer snapshot de LOLCLI; después verifica `/turnos` (HTTP 200)
+   y comprueba que el encabezado muestre el nombre de la sede correspondiente.
+   También reintenta cuando IIS todavía no acepta conexiones. Solo restaura el backup
+   si la aplicación no queda lista dentro de ese plazo. Si termina con `HTTP 000`,
+   revise el binding del sitio: `127.0.0.1` debe aceptar conexiones en el puerto
+   indicado, o pase la IP enlazada mediante `-SmokeTestHost`.
 
 Uso en el servidor (donde se edita el codigo), publica y despliega todo:
 
@@ -154,7 +162,8 @@ powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites i
 ```
 
 Opciones: `-WebRoot <ruta>` (por defecto `C:\inetpub`), `-BackupRoot <ruta>`,
-`-AppPools "sede=nombre;sede=nombre"`, `-SitePorts "sede=puerto;sede=puerto"`,
+`-AppPools "sede=nombre;sede=nombre"`, `-IisSites "sede=nombre;sede=nombre"`,
+`-SitePorts "sede=puerto;sede=puerto"`,
 `-SmokeTestScheme http|https`, `-SmokeTestHost <host>`, `-SkipIis` y
 `-SkipSmokeTest`. La espera puede ajustarse con `-SmokeTestTimeoutSeconds` y
 `-SmokeTestRetrySeconds`. El script exige administrador para detener e iniciar pools; los backups

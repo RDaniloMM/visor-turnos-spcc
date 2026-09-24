@@ -62,6 +62,41 @@ public sealed class DotEnvLoaderTests : IDisposable
     }
 
     [Fact]
+    public void SiteIdentityFromDotEnvWinsOverInheritedEnvironment()
+    {
+        const string codeKey = "Site__Code";
+        const string nameKey = "Site__DisplayName";
+        const string zoneKey = "Site__TimeZone";
+        var oldCode = Environment.GetEnvironmentVariable(codeKey);
+        var oldName = Environment.GetEnvironmentVariable(nameKey);
+        var oldZone = Environment.GetEnvironmentVariable(zoneKey);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(codeKey, "1");
+            Environment.SetEnvironmentVariable(nameKey, "Hospital SPCC Cuajone");
+            Environment.SetEnvironmentVariable(zoneKey, "Wrong zone");
+            File.WriteAllText(_envPath,
+                "Site__Code=3\nSite__DisplayName=Hospital SPCC Toquepala\nSite__TimeZone=SA Pacific Standard Time\n");
+
+            var config = new ConfigurationBuilder()
+                .AddEnvironmentVariables()
+                .AddDotEnv(_tempDir)
+                .Build();
+
+            Assert.Equal("3", config["Site:Code"]);
+            Assert.Equal("Hospital SPCC Toquepala", config["Site:DisplayName"]);
+            Assert.Equal("SA Pacific Standard Time", config["Site:TimeZone"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(codeKey, oldCode);
+            Environment.SetEnvironmentVariable(nameKey, oldName);
+            Environment.SetEnvironmentVariable(zoneKey, oldZone);
+        }
+    }
+
+    [Fact]
     public void MissingDotEnvFileIsIgnored()
     {
         var config = new ConfigurationBuilder()

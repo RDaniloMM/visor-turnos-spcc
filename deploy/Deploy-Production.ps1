@@ -16,7 +16,7 @@
       3. Ejecuta dotnet publish directamente sobre C:\inetpub\publish-<sede>.
       4. Conserva el .env local del servidor; en el primer despliegue siembra el
          fragmento no secreto de deploy/sites/<sede>.env.
-      5. Retira app_offline.htm e inicia el Application Pool real de la sede.
+      5. Retira app_offline.htm e inicia el Application Pool y el sitio IIS.
       6. Verifica /health/ready y /turnos en el puerto IIS de la sede.
 
     Si la publicacion o la verificacion falla, restaura el backup de esa sede.
@@ -53,6 +53,11 @@ param(
     [string]$WebRoot = "C:\inetpub",
     [string]$BackupRoot = "C:\inetpub\visor-turnos-backups",
     [object]$AppPools = @{
+        cuajone   = "Visor Turnos Hospital Cuajone"
+        ilo       = "Visor Turnos Hospital Ilo"
+        toquepala = "Visor Turnos Hospital Toquepala"
+    },
+    [object]$IisSites = @{
         cuajone   = "Visor Turnos Hospital Cuajone"
         ilo       = "Visor Turnos Hospital Ilo"
         toquepala = "Visor Turnos Hospital Toquepala"
@@ -188,6 +193,45 @@ function Start-AppPoolSafely {
     Wait-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName -ExpectedState "Started"
 }
 
+function Get-IisSiteState {
+    param([string]$AppCmdPath, [string]$SiteName)
+
+    $output = & $AppCmdPath list site $SiteName /text:state 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo consultar el sitio IIS '$SiteName': $($output -join ' ')"
+    }
+
+    $stateText = ($output | Select-Object -First 1) -as [string]
+    if ([string]::IsNullOrWhiteSpace($stateText)) {
+        throw "appcmd no devolvio el estado del sitio IIS '$SiteName'."
+    }
+
+    return $stateText.Trim()
+}
+
+function Start-IisSiteSafely {
+    param([string]$AppCmdPath, [string]$SiteName)
+
+    $state = Get-IisSiteState -AppCmdPath $AppCmdPath -SiteName $SiteName
+    if (-not [string]::Equals($state, "Started", [System.StringComparison]::OrdinalIgnoreCase)) {
+        & $AppCmdPath start site $SiteName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "appcmd no pudo iniciar el sitio IIS '$SiteName' (codigo $LASTEXITCODE)."
+        }
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $state = Get-IisSiteState -AppCmdPath $AppCmdPath -SiteName $SiteName
+        if ([string]::Equals($state, "Started", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "El sitio IIS '$SiteName' no alcanzo el estado Started en 30 segundos. Estado actual: '$state'."
+}
+
 function Test-HttpEndpoint {
     param(
         [string]$Scheme,
@@ -197,11 +241,63 @@ function Test-HttpEndpoint {
         [string]$OutFile
     )
 
+    if (Test-Path -LiteralPath $OutFile) {
+        Remove-Item -LiteralPath $OutFile -Force
+    }
+
     $curlArgs = @(
-        "-sS", "-k", "-o", $OutFile, "-w", "%{http_code}",
+        "--silent", "--show-error", "--insecure", "--noproxy", "*",
+        "--connect-timeout", "3", "--max-time", "8",
+        "--output", $OutFile, "--write-out", "%{http_code}",
         "${Scheme}://${Hostname}:${Port}${Path}"
     )
-    return (& curl.exe @curlArgs 2>$null)
+
+    # PowerShell 5 convierte stderr de curl.exe en un error terminante cuando
+    # ErrorActionPreference es Stop. Un puerto aun no disponible debe poder
+    # reintentarse; el codigo de salida de curl determina el resultado.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $code = & curl.exe @curlArgs 2>$null
+        $curlExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if ($curlExitCode -ne 0) {
+        return "000"
+    }
+
+    return ([string]$code).Trim()
+}
+
+function Assert-SiteDisplayName {
+    param(
+        [string]$SiteName,
+        [string]$PageFile,
+        [string]$SiteFragmentDirectory
+    )
+
+    $fragment = Join-Path $SiteFragmentDirectory "$SiteName.env"
+    $configuredName = Get-Content -LiteralPath $fragment |
+        Where-Object { $_ -match '^Site__DisplayName=' } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($configuredName)) {
+        throw "No se encontro Site__DisplayName en $fragment."
+    }
+
+    $expectedName = $configuredName.Substring("Site__DisplayName=".Length).Trim()
+    $page = Get-Content -LiteralPath $PageFile -Raw
+    $match = [regex]::Match($page, '<h1\s+id="site-name"[^>]*>(.*?)</h1>', 'Singleline, IgnoreCase')
+    if (-not $match.Success) {
+        throw "La pagina de '$SiteName' no contiene el encabezado de sede esperado."
+    }
+
+    $actualName = [System.Net.WebUtility]::HtmlDecode($match.Groups[1].Value).Trim()
+    if (-not [string]::Equals($actualName, $expectedName, [System.StringComparison]::Ordinal)) {
+        throw "Identidad de sede incorrecta para '$SiteName': la pagina muestra '$actualName'; se esperaba '$expectedName'. Revise .env, variables Site__* del servidor y binding IIS."
+    }
 }
 
 function Wait-ForReadyEndpoint {
@@ -228,7 +324,7 @@ function Wait-ForReadyEndpoint {
             ""
         }
 
-        if ($lastCode -eq "200" -and $lastBody -match "Healthy") {
+        if ($lastCode -eq "200" -and $lastBody.Trim() -ceq "Healthy") {
             return @{
                 IsReady = $true
                 Code = $lastCode
@@ -238,7 +334,13 @@ function Wait-ForReadyEndpoint {
         }
 
         if ([DateTime]::UtcNow -lt $deadline) {
-            $state = if ([string]::IsNullOrWhiteSpace($lastBody)) { "sin cuerpo" } else { $lastBody.Trim() }
+            $state = if ($lastCode -eq "000") {
+                "sin conexion HTTP"
+            } elseif ([string]::IsNullOrWhiteSpace($lastBody)) {
+                "sin cuerpo"
+            } else {
+                $lastBody.Trim()
+            }
             Write-Host "    Aun no listo: HTTP $lastCode ($state). Reintento en $RetrySeconds s..."
             Start-Sleep -Seconds $RetrySeconds
         }
@@ -253,6 +355,7 @@ function Wait-ForReadyEndpoint {
 }
 
 $AppPools = ConvertTo-SiteMap -Value $AppPools -ParameterName "-AppPools"
+$IisSites = ConvertTo-SiteMap -Value $IisSites -ParameterName "-IisSites"
 $SitePorts = ConvertTo-SiteMap -Value $SitePorts -ParameterName "-SitePorts"
 
 $siteNames = @($Sites -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
@@ -267,6 +370,9 @@ foreach ($name in $siteNames) {
     }
     if (-not $AppPools.ContainsKey($name)) {
         throw "No hay Application Pool definido para la sede '$name'."
+    }
+    if (-not $IisSites.ContainsKey($name)) {
+        throw "No hay sitio IIS definido para la sede '$name'."
     }
     if (-not $SitePorts.ContainsKey($name)) {
         throw "No hay puerto IIS definido para la sede '$name'."
@@ -293,6 +399,7 @@ foreach ($name in $siteNames) {
 
     $backup = Join-Path $backupRootPath "$stamp-$name"
     $appPool = [string]$AppPools[$name]
+    $iisSite = [string]$IisSites[$name]
     $port = [int]$SitePorts[$name]
     $hadPreviousDeployment = Test-Path -LiteralPath $dest -PathType Container
 
@@ -316,6 +423,9 @@ foreach ($name in $siteNames) {
             if (-not (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
                 throw "No se encontro appcmd.exe. Verifique que IIS este instalado."
             }
+
+            $siteState = Get-IisSiteState -AppCmdPath $appcmd -SiteName $iisSite
+            Write-Host "==> Estado inicial del sitio IIS '$iisSite': $siteState"
 
             Write-Host "==> Deteniendo Application Pool para liberar las DLL: $appPool"
             Stop-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
@@ -341,6 +451,8 @@ foreach ($name in $siteNames) {
         if (-not $SkipIis) {
             Write-Host "==> Iniciando Application Pool: $appPool"
             Start-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
+            Write-Host "==> Iniciando sitio IIS: $iisSite"
+            Start-IisSiteSafely -AppCmdPath $appcmd -SiteName $iisSite
         }
 
         if (-not $SkipSmokeTest) {
@@ -356,10 +468,18 @@ foreach ($name in $siteNames) {
             if ($ok) {
                 $pageCode = Test-HttpEndpoint -Scheme $SmokeTestScheme -Hostname $SmokeTestHost -Port $port -Path "/turnos" -OutFile $pageFile
                 $ok = ($pageCode -eq "200")
+                if ($ok) {
+                    Assert-SiteDisplayName -SiteName $name -PageFile $pageFile -SiteFragmentDirectory (Join-Path $PSScriptRoot "sites")
+                }
             }
 
             if (-not $ok) {
-                throw "Smoke test fallo para '$name' en $baseUrl despues de $($ready.Attempts) intentos (ultimo health HTTP $($ready.Code))."
+                $detail = if ($ready.Code -eq "000") {
+                    "No hubo conexion HTTP; revise que el sitio IIS este iniciado y que su binding escuche en ${SmokeTestHost}:${port}. Si usa otra IP, indique -SmokeTestHost."
+                } else {
+                    "Ultimo health HTTP $($ready.Code)."
+                }
+                throw "Smoke test fallo para '$name' en $baseUrl despues de $($ready.Attempts) intentos. $detail"
             }
 
             Write-Host "==> Smoke test OK: $baseUrl (listo en $($ready.Attempts) intento(s))"
@@ -387,6 +507,8 @@ foreach ($name in $siteNames) {
         if ($hadPreviousDeployment -and -not $SkipIis -and (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
             Write-Host "==> Iniciando Application Pool restaurado: $appPool"
             Start-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
+            Write-Host "==> Iniciando sitio IIS restaurado: $iisSite"
+            Start-IisSiteSafely -AppCmdPath $appcmd -SiteName $iisSite
         }
 
         throw "Despliegue de '$name' fallo. Detalle: $failure"

@@ -8,10 +8,9 @@ namespace VisorTurnos.Configuration;
 /// <summary>
 /// Carga un archivo .env en la configuracion usando el paquete DotNetEnv.
 ///
-/// Precedencia: variables de entorno reales > .env > appsettings*.json.
-/// Se consigue insertando el source del .env justo antes del provider de
-/// variables de entorno y usando LoadOptions que respeta los valores ya
-/// presentes en el entorno (clobberExistingVars = false).
+/// Precedencia general: variables de entorno reales > .env > appsettings*.json.
+/// Las tres claves Site del .env son la excepcion: identifican la sede fija
+/// de la carpeta IIS y prevalecen sobre variables de entorno heredadas.
 ///
 /// Las claves usan la convencion de variables de entorno de .NET:
 /// "ConnectionStrings__LolcliOdbc" se convierte en la seccion
@@ -48,6 +47,28 @@ public static class DotEnvLoader
         else
         {
             builder.Add(source);
+        }
+
+        // Un valor Site__* global o heredado del servidor no debe convertir
+        // las tres aplicaciones IIS en la misma sede. El .env fisico de cada
+        // despliegue es la fuente autoritativa solo para estas tres claves.
+        var siteSource = new EnvConfigurationSource(
+            new[] { dotEnvPath },
+            new LoadOptions(setEnvVars: false, clobberExistingVars: true));
+        var siteFile = new ConfigurationBuilder().Add(siteSource).Build();
+        var siteOverrides = new Dictionary<string, string?>();
+        foreach (var key in new[] { "Site:Code", "Site:DisplayName", "Site:TimeZone" })
+        {
+            var value = siteFile[key];
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                siteOverrides[key] = value;
+            }
+        }
+
+        if (siteOverrides.Count > 0)
+        {
+            builder.AddInMemoryCollection(siteOverrides);
         }
 
         return builder;
