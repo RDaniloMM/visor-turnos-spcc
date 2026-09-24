@@ -116,15 +116,16 @@ el JavaScript compilado queda dentro del resultado publicado.
 `C:\inetpub\publish-toquepala`) con salvaguardas:
 
 1. **Backup** de cada carpeta actual en `C:\inetpub\visor-turnos-backups\YYYYMMDD-HHMMSS-<sede>\`.
-2. **app_offline.htm** se coloca antes de copiar, para que IIS detenga la app con gracia
-   y las pantallas muestren "Actualizando informacion" en lugar de errores parciales.
+2. **app_offline.htm** se coloca y el Application Pool de la sede se detiene
+   explícitamente. El script espera el estado `Stopped` antes de limpiar, evitando que
+   `w3wp.exe` mantenga bloqueadas las DLL publicadas.
 3. **Publicacion directa** mediante `dotnet publish --output C:\inetpub\publish-<sede>`.
 4. **Preservacion de la config del servidor**: el `.env` previo de cada aplicacion IIS
    se excluye de la limpieza. La conexion ODBC y las demas claves locales se conservan;
    solo se sincronizan `Site__Code`, `Site__DisplayName` y `Site__TimeZone` desde el
    fragmento correspondiente. En un deploy inicial el operador agrega
    `ConnectionStrings__LolcliOdbc` antes de activar.
-5. **Reciclado del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
+5. **Inicio del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
 6. **Smoke test** sobre `127.0.0.1` y el puerto IIS de cada sede: 8080, 8081 o 8082.
    Espera hasta 60 segundos y reintenta `/health/ready` cada 3 segundos mientras el
    worker obtiene su primer snapshot de LOLCLI; después verifica `/turnos` (HTTP 200).
@@ -134,7 +135,7 @@ Uso en el servidor (donde se edita el codigo), publica y despliega todo:
 
 Abra primero **PowerShell como administrador**. Pertenecer al grupo Administradores
 no basta si la consola no fue elevada por UAC; sin elevacion Windows deniega la
-escritura en `C:\inetpub` y el reciclado de los Application Pools.
+escritura en `C:\inetpub` y la administracion de los Application Pools.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites cuajone,ilo,toquepala
@@ -156,7 +157,7 @@ Opciones: `-WebRoot <ruta>` (por defecto `C:\inetpub`), `-BackupRoot <ruta>`,
 `-AppPools "sede=nombre;sede=nombre"`, `-SitePorts "sede=puerto;sede=puerto"`,
 `-SmokeTestScheme http|https`, `-SmokeTestHost <host>`, `-SkipIis` y
 `-SkipSmokeTest`. La espera puede ajustarse con `-SmokeTestTimeoutSeconds` y
-`-SmokeTestRetrySeconds`. El script exige administrador para reciclar pools; los backups
+`-SmokeTestRetrySeconds`. El script exige administrador para detener e iniciar pools; los backups
 numerados por fecha constituyen el historial de despliegue.
 
 ### Prueba sin IIS

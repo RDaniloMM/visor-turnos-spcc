@@ -168,9 +168,28 @@ foreach ($name in $siteNames) {
 
     if ($CleanOutput) {
         Write-Host "==> Limpiando publicacion anterior (se conservan .env y app_offline.htm): $dest"
-        Get-ChildItem -LiteralPath $dest -Force |
-            Where-Object { $_.Name -notin @('.env', 'app_offline.htm') } |
-            Remove-Item -Recurse -Force
+        $cleaned = $false
+        for ($attempt = 1; $attempt -le 10; $attempt++) {
+            try {
+                Get-ChildItem -LiteralPath $dest -Force |
+                    Where-Object { $_.Name -notin @('.env', 'app_offline.htm') } |
+                    Remove-Item -Recurse -Force -ErrorAction Stop
+                $cleaned = $true
+                break
+            }
+            catch {
+                if ($attempt -eq 10) {
+                    throw "No se pudo limpiar '$dest' despues de 10 intentos. Verifique que el Application Pool este detenido. Detalle: $($_.Exception.Message)"
+                }
+
+                Write-Host "    Archivo aun bloqueado; reintento de limpieza $attempt/10 en 1 s..."
+                Start-Sleep -Seconds 1
+            }
+        }
+
+        if (-not $cleaned) {
+            throw "No se pudo confirmar la limpieza de '$dest'."
+        }
     }
 
     Write-Host "==> dotnet publish para '$name': $dest"

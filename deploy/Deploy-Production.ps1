@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Publica y despliega el visor directamente en las carpetas fisicas de IIS,
-    con backup, app_offline, preservacion de .env, reciclado y smoke test.
+    con backup, app_offline, preservacion de .env, parada/inicio del pool y smoke test.
 
 .DESCRIPTION
     Rutas de produccion confirmadas:
@@ -16,16 +16,16 @@
       3. Ejecuta dotnet publish directamente sobre C:\inetpub\publish-<sede>.
       4. Conserva el .env local del servidor; en el primer despliegue siembra el
          fragmento no secreto de deploy/sites/<sede>.env.
-      5. Retira app_offline.htm y recicla el Application Pool real de la sede.
+      5. Retira app_offline.htm e inicia el Application Pool real de la sede.
       6. Verifica /health/ready y /turnos en el puerto IIS de la sede.
 
     Si la publicacion o la verificacion falla, restaura el backup de esa sede.
     Debe ejecutarse como administrador en el servidor IIS.
 
 .PARAMETER SkipPublish
-    No compila ni publica; solo recicla/verifica el contenido ya existente.
+    No compila ni publica; solo reinicia/verifica el contenido ya existente.
 .PARAMETER SkipIis
-    No recicla Application Pools (util para pruebas fuera de IIS).
+    No detiene ni inicia Application Pools (util para pruebas fuera de IIS).
 .PARAMETER SkipSmokeTest
     No verifica los endpoints tras el despliegue.
 .PARAMETER Sites
@@ -82,7 +82,7 @@ function Test-IsAdministrator {
 if (-not $SkipIis -and -not (Test-IsAdministrator)) {
     throw @"
 Este despliegue requiere una consola de PowerShell elevada porque escribe en
-C:\inetpub y recicla Application Pools de IIS.
+C:\inetpub y administra Application Pools de IIS.
 
 Cierre esta consola, abra PowerShell con 'Ejecutar como administrador' y repita:
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites cuajone,ilo,toquepala
@@ -118,6 +118,74 @@ function Assert-Robocopy {
     if ($ExitCode -ge 8) {
         throw "robocopy fallo con codigo $ExitCode."
     }
+}
+
+function Get-AppPoolState {
+    param(
+        [string]$AppCmdPath,
+        [string]$AppPoolName
+    )
+
+    $output = & $AppCmdPath list apppool $AppPoolName /text:state 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo consultar el Application Pool '$AppPoolName': $($output -join ' ')"
+    }
+
+    $stateText = ($output | Select-Object -First 1) -as [string]
+    if ([string]::IsNullOrWhiteSpace($stateText)) {
+        throw "appcmd no devolvio el estado del Application Pool '$AppPoolName'."
+    }
+
+    return $stateText.Trim()
+}
+
+function Wait-AppPoolState {
+    param(
+        [string]$AppCmdPath,
+        [string]$AppPoolName,
+        [string]$ExpectedState,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $state = Get-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName
+        if ([string]::Equals($state, $ExpectedState, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "El Application Pool '$AppPoolName' no alcanzo el estado '$ExpectedState' en $TimeoutSeconds segundos. Estado actual: '$state'."
+}
+
+function Stop-AppPoolSafely {
+    param([string]$AppCmdPath, [string]$AppPoolName)
+
+    $state = Get-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName
+    if (-not [string]::Equals($state, "Stopped", [System.StringComparison]::OrdinalIgnoreCase)) {
+        & $AppCmdPath stop apppool "/apppool.name:$AppPoolName" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "appcmd no pudo detener '$AppPoolName' (codigo $LASTEXITCODE)."
+        }
+    }
+
+    Wait-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName -ExpectedState "Stopped"
+}
+
+function Start-AppPoolSafely {
+    param([string]$AppCmdPath, [string]$AppPoolName)
+
+    $state = Get-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName
+    if (-not [string]::Equals($state, "Started", [System.StringComparison]::OrdinalIgnoreCase)) {
+        & $AppCmdPath start apppool "/apppool.name:$AppPoolName" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "appcmd no pudo iniciar '$AppPoolName' (codigo $LASTEXITCODE)."
+        }
+    }
+
+    Wait-AppPoolState -AppCmdPath $AppCmdPath -AppPoolName $AppPoolName -ExpectedState "Started"
 }
 
 function Test-HttpEndpoint {
@@ -244,6 +312,16 @@ foreach ($name in $siteNames) {
     Start-Sleep -Seconds 2
 
     try {
+        if (-not $SkipIis) {
+            if (-not (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
+                throw "No se encontro appcmd.exe. Verifique que IIS este instalado."
+            }
+
+            Write-Host "==> Deteniendo Application Pool para liberar las DLL: $appPool"
+            Stop-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
+            Write-Host "    -> Application Pool detenido."
+        }
+
         if (-not $SkipPublish) {
             Write-Host "==> Publicando directamente en: $dest"
             & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "Publish-VisorTurnos.ps1") `
@@ -261,15 +339,8 @@ foreach ($name in $siteNames) {
         Write-Host "==> app_offline.htm retirado."
 
         if (-not $SkipIis) {
-            if (-not (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
-                throw "No se encontro appcmd.exe. Verifique que IIS este instalado."
-            }
-
-            Write-Host "==> Reciclando Application Pool: $appPool"
-            & $appcmd recycle apppool "/apppool.name:$appPool" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "appcmd no pudo reciclar '$appPool' (codigo $LASTEXITCODE)."
-            }
+            Write-Host "==> Iniciando Application Pool: $appPool"
+            Start-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
         }
 
         if (-not $SkipSmokeTest) {
@@ -299,6 +370,11 @@ foreach ($name in $siteNames) {
         Write-Host "ERROR durante el despliegue de '$name': $failure" -ForegroundColor Red
 
         if ($hadPreviousDeployment -and (Test-Path -LiteralPath $backup -PathType Container)) {
+            if (-not $SkipIis -and (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
+                Write-Host "==> Deteniendo Application Pool antes del rollback: $appPool"
+                Stop-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
+            }
+
             Set-Content -LiteralPath $offline -Value "<!doctype html><html><body><h1>Restaurando version anterior</h1></body></html>" -Encoding UTF8
             Start-Sleep -Seconds 2
             Write-Host "==> Restaurando backup: $backup -> $dest"
@@ -308,8 +384,9 @@ foreach ($name in $siteNames) {
             Write-Host "==> No habia despliegue anterior; app_offline.htm se mantiene para no servir una publicacion incompleta."
         }
 
-        if (-not $SkipIis -and (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
-            & $appcmd recycle apppool "/apppool.name:$appPool" | Out-Null
+        if ($hadPreviousDeployment -and -not $SkipIis -and (Test-Path -LiteralPath $appcmd -PathType Leaf)) {
+            Write-Host "==> Iniciando Application Pool restaurado: $appPool"
+            Start-AppPoolSafely -AppCmdPath $appcmd -AppPoolName $appPool
         }
 
         throw "Despliegue de '$name' fallo. Detalle: $failure"
