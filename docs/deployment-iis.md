@@ -145,6 +145,27 @@ Abra primero **PowerShell como administrador**. Pertenecer al grupo Administrado
 no basta si la consola no fue elevada por UAC; sin elevacion Windows deniega la
 escritura en `C:\inetpub` y la administracion de los Application Pools.
 
+### Actualizacion desde Git
+
+`wwwroot/js/tv.js` y `tv.js.map` son salidas generadas por TypeScript. No se
+versionan; `dotnet publish` los vuelve a crear e incluye ambos en cada publicacion.
+Esto evita que una compilacion en el servidor ensucie el checkout y bloquee el
+siguiente `git pull`.
+
+En la **primera** actualizacion que incorpore este cambio, Git todavia considera
+versionados esos archivos en el checkout anterior. Si `git status --short` muestra
+modificaciones en ellos, guarde esos cambios de forma recuperable antes del pull:
+
+```powershell
+git status --short
+git stash push -m "JS generado antes de actualizar" -- wwwroot/js/tv.js wwwroot/js/tv.js.map
+git pull --ff-only origin master
+```
+
+No aplique ese stash automaticamente: las salidas se regeneran al desplegar. Si
+tambien hay cambios locales en otros archivos, revíselos por separado antes de
+actualizar. No se modifica el `.env` de `C:\inetpub\publish-<sede>`.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites cuajone,ilo,toquepala
 ```

@@ -2,6 +2,9 @@ bin/
 obj/
 .vs/
 ClientApp/node_modules/
+# Salidas de TypeScript: dotnet build/publish las genera desde ClientApp/src.
+wwwroot/js/tv.js
+wwwroot/js/tv.js.map
 artifacts/
 publish/
 TestResults/
