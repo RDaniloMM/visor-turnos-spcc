@@ -18,6 +18,14 @@ Una sola base y un solo DSN (`LOLCLI9000`); cada despliegue varía únicamente
 generan carpetas autocontenidas, una por sede, cada una con su propio `.env`
 `deploy/sites/<sede>.env` + el `.env` local del servidor (cadena de conexion).
 
+Las carpetas fisicas confirmadas en el servidor son:
+
+| Sede | Puerto IIS | Carpeta fisica | Application Pool |
+| --- | ---: | --- | --- |
+| Cuajone | 8080 | `C:\inetpub\publish-cuajone` | `Visor Turnos Hospital Cuajone` |
+| Ilo | 8081 | `C:\inetpub\publish-ilo` | `Visor Turnos Hospital Ilo` |
+| Toquepala | 8082 | `C:\inetpub\publish-toquepala` | `Visor Turnos Hospital Toquepala` |
+
 Cada sede es un **sitio IIS independiente** con su propio hostname (binding por host
 header) y servido en la raiz de ese hostname. No se usan rutas virtuales largas; el
 televisor apunta a la raiz de su hostname.
@@ -70,10 +78,10 @@ comodín `*.hospital.local`.
 específica de sede (incluida la conexion) vive en el `.env` local de cada sitio IIS:
 
 - `deploy/sites/<sede>.env` se versiona con la config no secreta de la sede
-  (`Site__Code`, `Site__DisplayName`, `Site__TimeZone`) y se copia al publicar
-  (`artifacts/publish-<sede>/.env`).
+  (`Site__Code`, `Site__DisplayName`, `Site__TimeZone`) y se usa para crear el
+  `.env` inicial en `C:\inetpub\publish-<sede>`.
 - En el servidor, el `.env` de la carpeta fisica del sitio es **autoritativo**: se
-  excluye del deploy (`/XF .env`), nunca se borra ni se sobreescribe. Agregue ahi la
+  excluye de la limpieza previa, nunca se borra ni se sobreescribe. Agregue ahi la
   clave `ConnectionStrings__LolcliOdbc` (convencion .NET: `__` se traduce a `:`), o
   defina una variable de entorno del Application Pool con el mismo nombre y valor.
 
@@ -93,26 +101,30 @@ config de una sede basta editar el `.env` del sitio y reciclar su App Pool.
 powershell -ExecutionPolicy Bypass -File .\deploy\Publish-VisorTurnos.ps1 -Configuration Release
 ```
 
-El script publica el proyecto una sola vez y deja `artifacts/publish-<sede>/`.
-Produccion no necesita Node.js: el JavaScript compilado queda dentro del resultado publicado.
+El script ejecuta `dotnet publish` directamente sobre las carpetas fisicas
+`C:\inetpub\publish-<sede>`. El `.env` existente se conserva; si no existe, se crea
+desde el fragmento no secreto de la sede. Produccion no necesita Node.js en ejecucion:
+el JavaScript compilado queda dentro del resultado publicado.
 
 ## Despliegue automatizado a produccion
 
-`deploy/Deploy-Production.ps1` copia los artefactos publicados a las carpetas fisicas
-de IIS (`C:\inetpub\visorturnos\{cuajone,ilo,toquepala}`) con salvaguardas:
+`deploy/Deploy-Production.ps1` publica directamente en las carpetas fisicas de IIS
+(`C:\inetpub\publish-cuajone`, `C:\inetpub\publish-ilo` y
+`C:\inetpub\publish-toquepala`) con salvaguardas:
 
-1. **Backup** de cada carpeta actual en `C:\inetpub\visorturnos\backup\YYYYMMDD-HHMMSS-<sede>\`.
+1. **Backup** de cada carpeta actual en `C:\inetpub\visor-turnos-backups\YYYYMMDD-HHMMSS-<sede>\`.
 2. **app_offline.htm** se coloca antes de copiar, para que IIS detenga la app con gracia
    y las pantallas muestren "Actualizando informacion" en lugar de errores parciales.
-3. **Copia `/MIR`** con `robocopy` (fuera `app_offline.htm`).
+3. **Publicacion directa** mediante `dotnet publish --output C:\inetpub\publish-<sede>`.
 4. **Preservacion de la config del servidor**: el `.env` previo de cada aplicacion IIS
-   se excluye del copiado (`/XF app_offline.htm .env`), se conserva intacto y nunca se
-   sobreescribe por el fragmento de `deploy/sites/`. En un deploy inicial (sin `.env`
+   se excluye de la limpieza, se conserva intacto y nunca se sobreescribe por el
+   fragmento de `deploy/sites/`. En un deploy inicial (sin `.env`
    previo) se siembra el `.env` del fragmento publicado, y el operador agrega ahi
    `ConnectionStrings__LolcliOdbc` antes de activar.
-5. **Reciclado del App Pool** (`VisorPool-<sede>`) mediante `appcmd`.
-6. **Smoke test**: `curl --resolve` hacia `/health/ready` (responde `Healthy`) y `/turnos`
-   (HTTP 200). Si falla, restaura el backup y recicla de nuevo.
+5. **Reciclado del Application Pool real** (`Visor Turnos Hospital <Sede>`) mediante `appcmd`.
+6. **Smoke test** sobre `127.0.0.1` y el puerto IIS de cada sede: 8080, 8081 o 8082.
+   Verifica `/health/ready` (responde `Healthy`) y `/turnos` (HTTP 200). Si falla,
+   restaura el backup y recicla de nuevo.
 
 Uso en el servidor (donde se edita el codigo), publica y despliega todo:
 
@@ -132,18 +144,18 @@ powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -SkipPub
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 -Sites ilo
 ```
 
-Opciones: `-WebRoot <ruta>` (carpeta base de sitios), `-BackupRoot <ruta>`,
-`-AppPoolPrefix <prefijo>`, `-SiteHosts "sede=hostname;sede=hostname"` (hostnames del
-smoke test), `-SmokeTestPort <puerto>` (443 en produccion; use el puerto del perfil al
-probar local), `-SkipIis` (sin IIS), `-SkipSmokeTest` (solo copia/backup). El script
-exige administrador para reciclar pools; los backups numerados por fecha constituyen
-el historial de deploy.
+Opciones: `-WebRoot <ruta>` (por defecto `C:\inetpub`), `-BackupRoot <ruta>`,
+`-AppPools "sede=nombre;sede=nombre"`, `-SitePorts "sede=puerto;sede=puerto"`,
+`-SmokeTestScheme http|https`, `-SmokeTestHost <host>`, `-SkipIis` y
+`-SkipSmokeTest`. El script exige administrador para reciclar pools; los backups
+numerados por fecha constituyen el historial de despliegue.
 
 ### Prueba sin IIS
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy\Deploy-Production.ps1 `
-    -SkipPublish -SkipIis -SkipSmokeTest -WebRoot C:\tmp\webroot
+    -SkipPublish -SkipIis -SkipSmokeTest `
+    -WebRoot C:\tmp\webroot -BackupRoot C:\tmp\visor-backups
 ```
 
 Verificacion esperada: carpeta por sede con el contenido publicado, backup creado y
