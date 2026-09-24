@@ -1,5 +1,7 @@
 # Diccionario de Datos - Base de Datos LOLCLI
 
+> **Vigencia parcial (2026-09-24):** columnas, tipos SQL y nulabilidad de `dbo.citas`, `dbo.medicos`, `dbo.consultorios`, `dbo.am_consulta` y `dbo.am_diagnosticos` contrastados con la base `LOLCLI9000`. Cada tabla se verificó con `SELECT TOP (0)`, sin leer filas. En estas cinco secciones, las descripciones, índices, constraints y referencias se conservaron del diccionario anterior y no se validaron contra la instancia. Las demás tablas tampoco se actualizaron en esta revisión.
+
 ## Tabla: am_anamnesis
 
 | No | Campo | Tipo | Longitud | Descripción |
@@ -80,19 +82,43 @@
 
 ## Tabla: am_consulta
 
-| No | Campo | Tipo | Longitud | Descripción |
-|---|---|---|---|---|
-| 1 | numcons | int | 4 | Número de consulta |
-| 2 | pachis | varchar | 7 | Número de historia |
-| 3 | sercod | varchar | 4 | Código del servicio |
-| 4 | medcod | varchar | 4 | Código del médico |
-| 5 | feccon | datetime | 8 | Fecha de la consulta |
-| 6 | houcon | varchar | 5 | Hora de la consulta |
-| 7 | modcon | varchar | 1 | Modelo de la consulta |
-| 8 | obscon | text | 16 | Observación de la consulta |
-| 9 | prfnum | int | 4 | Número de prefactura asociada |
-| 10 | pinnum | varchar | 6 | Código del plan |
-| 11 | siscod | int | 4 | Establecimiento |
+| No | Campo | Tipo SQL | Nulo | Descripción |
+|---:|---|---|:---:|---|
+| 1 | numcon | `int` | No | Sin descripción documentada |
+| 2 | pachis | `varchar(10)` | No | Número de historia |
+| 3 | sercod | `varchar(4)` | No | Código del servicio |
+| 4 | medcod | `varchar(4)` | No | Código del médico |
+| 5 | feccon | `datetime` | No | Fecha de la consulta |
+| 6 | houcon | `varchar(5)` | No | Hora de la consulta |
+| 7 | modcon | `varchar(1)` | No | Modelo de la consulta |
+| 8 | obscon | `text` | Sí | Observación de la consulta |
+| 9 | prfnum | `int` | Sí | Número de prefactura asociada |
+| 10 | plnnum | `varchar(6)` | Sí | Sin descripción documentada |
+| 11 | siscod | `int` | No | Establecimiento |
+| 12 | estado | `varchar(1)` | No | Sin descripción documentada |
+| 13 | feccre | `datetime` | No | Sin descripción documentada |
+| 14 | fecumv | `datetime` | No | Sin descripción documentada |
+| 15 | usecod | `int` | No | Sin descripción documentada |
+| 16 | usenam | `varchar(30)` | No | Sin descripción documentada |
+| 17 | hostname | `varchar(20)` | No | Sin descripción documentada |
+| 18 | invnum | `int` | No | Sin descripción documentada |
+| 19 | numeva | `int` | No | Sin descripción documentada |
+| 20 | enfcod | `varchar(4)` | No | Sin descripción documentada |
+| 21 | nofacon | `varchar(1)` | No | Sin descripción documentada |
+| 22 | noeacon | `varchar(1)` | No | Sin descripción documentada |
+| 23 | nolacon | `varchar(1)` | No | Sin descripción documentada |
+| 24 | noprcon | `varchar(1)` | No | Sin descripción documentada |
+| 25 | noiqcon | `varchar(1)` | No | Sin descripción documentada |
+| 26 | codpri | `varchar(2)` | No | Sin descripción documentada |
+| 27 | altenf | `varchar(1)` | No | Sin descripción documentada |
+| 28 | prealta | `varchar(1)` | No | Sin descripción documentada |
+| 29 | altmed | `varchar(1)` | No | Sin descripción documentada |
+| 30 | oricod | `varchar(2)` | No | Sin descripción documentada |
+| 31 | stacon | `varchar(1)` | No | Sin descripción documentada |
+| 32 | invnum_t | `int` | No | Sin descripción documentada |
+| 33 | nxtdat | `datetime` | Sí | Sin descripción documentada |
+| 34 | stafirmd | `varchar(1)` | No | Sin descripción documentada |
+| 35 | linkcon | `varchar(200)` | Sí | Sin descripción documentada |
 
 ### Índices
 | Nombre Índice | Descripción | Index Keys |
@@ -115,15 +141,17 @@
 
 ## Tabla: am_diagnosticos
 
-| No | Campo | Tipo | Longitud | Descripción |
-|---|---|---|---|---|
-| 1 | numcon | int | 4 | Número de consulta |
-| 2 | coditm | varchar | 1 | Numero de item del diagnóstico |
-| 3 | diades | varchar | 140 | Descripción del diagnóstico |
-| 4 | tipdia | varchar | 1 | Tipo de diagnóstico |
-| 5 | diacod | varchar | 6 | Código del diagnóstico |
-| 6 | obsdia | varchar | 50 | Observación del diagnóstico |
-| 7 | diarcod | varchar | 2 | Reincidencia del Diagnóstico (Primera Vez) |
+| No | Campo | Tipo SQL | Nulo | Descripción |
+|---:|---|---|:---:|---|
+| 1 | numcon | `int` | No | Número de consulta |
+| 2 | coditm | `varchar(2)` | No | Numero de item del diagnóstico |
+| 3 | diades | `varchar(140)` | No | Descripción del diagnóstico |
+| 4 | tipdia | `varchar(1)` | No | Tipo de diagnóstico |
+| 5 | diacod | `varchar(12)` | Sí | Código del diagnóstico |
+| 6 | obsdia | `text` | Sí | Observación del diagnóstico |
+| 7 | diarcod | `varchar(2)` | No | Reincidencia del Diagnóstico (Primera Vez) |
+| 8 | pridia | `varchar(1)` | No | Sin descripción documentada |
+| 9 | medcod | `varchar(4)` | No | Sin descripción documentada |
 
 ### Índices
 | Nombre Índice | Descripción | Index Keys |
@@ -794,37 +822,91 @@
 
 ## Tabla: citas
 
-| No | Campo | Tipo | Longitud | Descripción |
-|---|---|---|---|---|
-| 1 | medcod | varchar | 4 | Código del médico |
-| 2 | codcon | varchar | 4 | Código de consultorio |
-| 3 | citdat | datetime | 8 | Fecha de la cita |
-| 4 | statte | varchar | 2 | Estado de atención de la cita |
-| 5 | tcicod | varchar | 2 | Tipo de citado |
-| 6 | pachis | varchar | 7 | Número de historia |
-| 7 | obscit | varchar | 20 | Observación |
-| 8 | pacnam | varchar | 30 | Nombre del paciente |
-| 9 | tarcod | varchar | 8 | Tarifa asociada |
-| 10 | prfnum | int | 4 | Número de prefactura |
-| 11 | invnum | int | 4 | Correlativo de origen |
-| 12 | tppcod | varchar | 2 | Tipo de paciente |
-| 13 | usecod | int | 4 | Código de usuario |
-| 14 | plnnum | varchar | 6 | Código de plan |
-| 15 | parcod | varchar | 2 | Código de categoria de pago |
-| 16 | citded | numeric | 9 | Monto del deducible |
-| 17 | citcoa | numeric | 9 | Porcentaje de coaseguro |
-| 18 | citmon | numeric | 9 | Monto del servicio |
-| 19 | citcar | varchar | 10 | Carta de beneficios |
-| 20 | citfca | datetime | 8 | Fecha de vigencia |
-| 21 | invnum_pre | int | 4 | Número de presupuesto |
-| 22 | citfvc | datetime | 8 | Fecha de vencimiento de la carta |
-| 23 | concod | varchar | 4 | Código de cía Contratante |
-| 24 | segcod | varchar | 4 | Código de cía de Seguros |
-| 25 | siscod | int | 4 | Código de Establecimiento |
-| 26 | tarcos | numeric | 9 | Costo de Tarifa |
-| 27 | tarcos_d | numeric | 9 | Costo en dolares de la tarifa |
-| 28 | tarcos_e | numeric | 9 | Costos de Establecimiento |
-| 29 | cithll | datetime | 8 | Hora de llegada a la cita |
+| No | Campo | Tipo SQL | Nulo | Descripción |
+|---:|---|---|:---:|---|
+| 1 | medcod | `varchar(4)` | No | Código del médico |
+| 2 | codcon | `varchar(4)` | No | Código de consultorio |
+| 3 | sercod | `varchar(4)` | No | Sin descripción documentada |
+| 4 | citdat | `datetime` | No | Fecha de la cita |
+| 5 | statte | `varchar(1)` | No | Estado de atención de la cita |
+| 6 | tcicod | `varchar(2)` | No | Tipo de citado |
+| 7 | pachis | `varchar(10)` | No | Número de historia |
+| 8 | obscit | `varchar(80)` | Sí | Observación |
+| 9 | pacnam | `varchar(40)` | No | Nombre del paciente |
+| 10 | tarcod | `varchar(8)` | No | Tarifa asociada |
+| 11 | prfnum | `int` | Sí | Número de prefactura |
+| 12 | invnum | `int` | No | Correlativo de origen |
+| 13 | plnnum | `varchar(6)` | No | Código de plan |
+| 14 | citded | `numeric(10,2)` | No | Monto del deducible |
+| 15 | citcoa | `numeric(10,2)` | No | Porcentaje de coaseguro |
+| 16 | citcar | `varchar(12)` | Sí | Carta de beneficios |
+| 17 | citfca | `datetime` | Sí | Fecha de vigencia |
+| 18 | invnum_pre | `int` | Sí | Número de presupuesto |
+| 19 | citfvc | `datetime` | Sí | Fecha de vencimiento de la carta |
+| 20 | concod | `varchar(4)` | No | Código de cía Contratante |
+| 21 | segcod | `varchar(4)` | No | Código de cía de Seguros |
+| 22 | siscod | `int` | No | Código de Establecimiento |
+| 23 | estado | `varchar(1)` | No | Sin descripción documentada |
+| 24 | feccre | `datetime` | No | Sin descripción documentada |
+| 25 | fecumv | `datetime` | No | Sin descripción documentada |
+| 26 | usecod | `int` | No | Código de usuario |
+| 27 | usenam | `varchar(30)` | No | Sin descripción documentada |
+| 28 | hostname | `varchar(20)` | No | Sin descripción documentada |
+| 29 | tipcli | `varchar(2)` | No | Sin descripción documentada |
+| 30 | cithll | `datetime` | Sí | Hora de llegada a la cita |
+| 31 | diacod | `varchar(12)` | Sí | Sin descripción documentada |
+| 32 | invppac | `numeric(14,4)` | No | Sin descripción documentada |
+| 33 | totigv_p | `numeric(14,4)` | No | Sin descripción documentada |
+| 34 | totbrt_p | `numeric(14,4)` | No | Sin descripción documentada |
+| 35 | invpseg | `numeric(14,4)` | No | Sin descripción documentada |
+| 36 | totigv_c | `numeric(14,4)` | No | Sin descripción documentada |
+| 37 | totbrt_c | `numeric(14,4)` | No | Sin descripción documentada |
+| 38 | netord | `numeric(14,4)` | No | Sin descripción documentada |
+| 39 | igvord | `numeric(14,4)` | No | Sin descripción documentada |
+| 40 | totdto | `numeric(14,4)` | No | Sin descripción documentada |
+| 41 | totdto_p | `numeric(14,4)` | No | Sin descripción documentada |
+| 42 | totdto_c | `numeric(14,4)` | No | Sin descripción documentada |
+| 43 | totord | `numeric(14,4)` | No | Sin descripción documentada |
+| 44 | codpaq | `varchar(6)` | No | Sin descripción documentada |
+| 45 | moncod | `varchar(2)` | No | Sin descripción documentada |
+| 46 | tipcam | `numeric(10,2)` | No | Sin descripción documentada |
+| 47 | invnum_p | `int` | No | Sin descripción documentada |
+| 48 | ocitcod | `varchar(4)` | No | Sin descripción documentada |
+| 49 | diacod2 | `varchar(12)` | Sí | Sin descripción documentada |
+| 50 | diacod3 | `varchar(12)` | Sí | Sin descripción documentada |
+| 51 | diacod4 | `varchar(12)` | Sí | Sin descripción documentada |
+| 52 | plnicc | `varchar(1)` | No | Sin descripción documentada |
+| 53 | stcicod | `varchar(2)` | No | Sin descripción documentada |
+| 54 | citgrupal | `varchar(1)` | Sí | Sin descripción documentada |
+| 55 | citcob | `numeric(14,2)` | No | Sin descripción documentada |
+| 56 | tarpri | `numeric(14,2)` | No | Sin descripción documentada |
+| 57 | tardto | `numeric(5,2)` | No | Sin descripción documentada |
+| 58 | totpar | `numeric(14,2)` | No | Sin descripción documentada |
+| 59 | citref_01 | `varchar(1)` | Sí | Sin descripción documentada |
+| 60 | citref_02 | `varchar(1)` | Sí | Sin descripción documentada |
+| 61 | codraz | `varchar(2)` | Sí | Sin descripción documentada |
+| 62 | flagaut | `varchar(1)` | No | Sin descripción documentada |
+| 63 | prfaut | `varchar(20)` | Sí | Sin descripción documentada |
+| 64 | codautsited | `varchar(20)` | Sí | Sin descripción documentada |
+| 65 | codplansited | `varchar(20)` | Sí | Sin descripción documentada |
+| 66 | codbenesited | `varchar(20)` | Sí | Sin descripción documentada |
+| 67 | prgori | `varchar(2)` | No | Sin descripción documentada |
+| 68 | stapag_caj | `varchar(1)` | No | Sin descripción documentada |
+| 69 | pacmail | `varchar(70)` | Sí | Sin descripción documentada |
+| 70 | invnum_ref | `int` | No | Sin descripción documentada |
+| 71 | plncnt | `varchar(15)` | Sí | Sin descripción documentada |
+| 72 | desplansited | `varchar(80)` | Sí | Sin descripción documentada |
+| 73 | citcoladi_01 | `varchar(20)` | Sí | Sin descripción documentada |
+| 74 | citcoladi_02 | `varchar(20)` | Sí | Sin descripción documentada |
+| 75 | obscit2 | `varchar(80)` | Sí | Sin descripción documentada |
+| 76 | aficod_sited | `varchar(1)` | No | Sin descripción documentada |
+| 77 | cittip | `varchar(1)` | No | Sin descripción documentada |
+| 78 | citzoomlink | `varchar(1000)` | Sí | Sin descripción documentada |
+| 79 | oripag | `varchar(2)` | Sí | Sin descripción documentada |
+| 80 | impconinf | `varchar(1)` | No | Sin descripción documentada |
+| 81 | citzoomlinkpac | `varchar(1000)` | Sí | Sin descripción documentada |
+| 82 | citassala | `varchar(1)` | No | Sin descripción documentada |
+| 83 | consinf_fec | `datetime` | Sí | Sin descripción documentada |
 
 ### Índices
 | Nombre Índice | Descripción | Index Keys |
@@ -941,10 +1023,17 @@
 
 ## Tabla: consultorios
 
-| No | Campo | Tipo | Longitud | Descripción |
-|---|---|---|---|---|
-| 1 | codcon | varchar | 4 | Código de consultorios |
-| 2 | descon | varchar | 20 | Descripción del consultorio |
+| No | Campo | Tipo SQL | Nulo | Descripción |
+|---:|---|---|:---:|---|
+| 1 | codcon | `varchar(4)` | No | Código de consultorios |
+| 2 | descon | `varchar(20)` | No | Descripción del consultorio |
+| 3 | estado | `varchar(1)` | No | Sin descripción documentada |
+| 4 | feccre | `datetime` | No | Sin descripción documentada |
+| 5 | fecumv | `datetime` | No | Sin descripción documentada |
+| 6 | usecod | `int` | No | Sin descripción documentada |
+| 7 | usenam | `varchar(30)` | No | Sin descripción documentada |
+| 8 | hostname | `varchar(20)` | No | Sin descripción documentada |
+| 9 | siscod | `int` | No | Sin descripción documentada |
 
 ### Índices
 | Nombre Índice | Descripción | Index Keys |
@@ -2491,33 +2580,62 @@
 
 ## Tabla: medicos
 
-| No | Campo | Tipo | Longitud | Descripción |
-|---|---|---|---|---|
-| 1 | medcod | varchar | 4 | Código del médico |
-| 2 | mednam | varchar | 40 | Nombre del médico |
-| 3 | tprcod | varchar | 2 | Tipo de especialidad |
-| 4 | sercod | varchar | 4 | Código de servicio |
-| 5 | medcol | varchar | 20 | Número de Colegiatura |
-| 6 | meddir | varchar | 45 | Dirección del médico |
-| 7 | ubicod | varchar | 6 | Código de ubicación |
-| 8 | medfon | numeric | 9 | Fonavi |
-| 9 | medigv | numeric | 9 | Impuestos |
-| 10 | trecod | varchar | 2 | Código de tipo de profesional |
-| 11 | medfin | datetime | 8 | Fecha de ingreso |
-| 12 | comcod | varchar | 2 | Tipo de contrato |
-| 13 | medobs | varchar | 30 | Observaciones |
-| 14 | medppv | numeric | 9 | Porcentaje de pacientes privados (no hábiles) |
-| 15 | medruc | varchar | 8 | Número de RUC |
-| 16 | medtel | varchar | 25 | Teléfono del médico |
-| 17 | medsta | varchar | 1 | Estado de vigencia del médico |
-| 18 | codcon | varchar | 4 | Código de consultorio |
-| 19 | honpar | varchar | 2 | Tipo de pago por honorarios profesionales |
-| 20 | tipprs | varchar | 1 | Tipo de Staff |
-| 21 | ruc | varchar | 20 | Nuevo RUC |
-| 22 | usecodx | int | 4 | Usuario Asociado |
-| 23 | numcit | int | 4 | No. de Citados |
-| 24 | medffi | datetime | 8 | Fecha Inicio de ausencia |
-| 25 | medffn | datetime | 8 | Fecha Fin de ausencia |
+| No | Campo | Tipo SQL | Nulo | Descripción |
+|---:|---|---|:---:|---|
+| 1 | medcod | `varchar(4)` | No | Código del médico |
+| 2 | mednam | `varchar(40)` | No | Nombre del médico |
+| 3 | tprcod | `varchar(2)` | No | Tipo de especialidad |
+| 4 | sercod | `varchar(4)` | No | Código de servicio |
+| 5 | medcol | `varchar(15)` | Sí | Número de Colegiatura |
+| 6 | meddir | `varchar(100)` | Sí | Dirección del médico |
+| 7 | ubicod | `varchar(12)` | Sí | Código de ubicación |
+| 8 | medfin | `datetime` | No | Fecha de ingreso |
+| 9 | comcod | `varchar(2)` | No | Tipo de contrato |
+| 10 | medobs | `varchar(1024)` | Sí | Observaciones |
+| 11 | medruc | `varchar(25)` | Sí | Número de RUC |
+| 12 | medtel | `varchar(25)` | Sí | Teléfono del médico |
+| 13 | medsta | `varchar(1)` | No | Estado de vigencia del médico |
+| 14 | codcon | `varchar(4)` | Sí | Código de consultorio |
+| 15 | honpar | `varchar(2)` | No | Tipo de pago por honorarios profesionales |
+| 16 | tipprs | `varchar(1)` | No | Tipo de Staff |
+| 17 | estado | `varchar(1)` | No | Sin descripción documentada |
+| 18 | feccre | `datetime` | No | Sin descripción documentada |
+| 19 | fecumv | `datetime` | No | Sin descripción documentada |
+| 20 | usecod | `int` | No | Sin descripción documentada |
+| 21 | usenam | `varchar(30)` | No | Sin descripción documentada |
+| 22 | hostname | `varchar(20)` | No | Sin descripción documentada |
+| 23 | medfir | `varchar(80)` | Sí | Sin descripción documentada |
+| 24 | usecodx | `int` | Sí | Usuario Asociado |
+| 25 | regesp | `varchar(20)` | Sí | Sin descripción documentada |
+| 26 | espcod | `varchar(4)` | No | Sin descripción documentada |
+| 27 | medmail | `varchar(100)` | Sí | Sin descripción documentada |
+| 28 | medcom | `text` | Sí | Sin descripción documentada |
+| 29 | meddoa | `varchar(200)` | Sí | Sin descripción documentada |
+| 30 | medpic | `varchar(80)` | Sí | Sin descripción documentada |
+| 31 | medhuel | `varchar(80)` | Sí | Sin descripción documentada |
+| 32 | numcit | `int` | Sí | No. de Citados |
+| 33 | medffi | `datetime` | Sí | Fecha Inicio de ausencia |
+| 34 | medffn | `datetime` | Sí | Fecha Fin de ausencia |
+| 35 | protip | `varchar(2)` | No | Sin descripción documentada |
+| 36 | codprom | `varchar(4)` | No | Sin descripción documentada |
+| 37 | staff | `varchar(1)` | No | Sin descripción documentada |
+| 38 | inttip | `varchar(2)` | No | Sin descripción documentada |
+| 39 | compar | `varchar(2)` | No | Sin descripción documentada |
+| 40 | medmod | `varchar(60)` | Sí | Sin descripción documentada |
+| 41 | honpar_la | `varchar(2)` | No | Sin descripción documentada |
+| 42 | honpar_ea | `varchar(2)` | No | Sin descripción documentada |
+| 43 | codprv | `varchar(4)` | No | Sin descripción documentada |
+| 44 | codcue | `varchar(12)` | No | Sin descripción documentada |
+| 45 | tipccod | `varchar(8)` | No | Sin descripción documentada |
+| 46 | cencos | `varchar(15)` | No | Sin descripción documentada |
+| 47 | usecod_ad | `varchar(100)` | Sí | Sin descripción documentada |
+| 48 | password_ad | `varchar(150)` | Sí | Sin descripción documentada |
+| 49 | medcod_qull | `varchar(10)` | Sí | Sin descripción documentada |
+| 50 | medcod_arie | `varchar(4)` | Sí | Sin descripción documentada |
+| 51 | tidcod | `varchar(2)` | No | Sin descripción documentada |
+| 52 | meddoc | `varchar(15)` | Sí | Sin descripción documentada |
+| 53 | medvircit_use | `varchar(200)` | Sí | Sin descripción documentada |
+| 54 | medcur | `varchar(200)` | Sí | Sin descripción documentada |
 
 ### Índices
 | Nombre Índice | Descripción | Index Keys |
