@@ -190,8 +190,13 @@ function buildAreaSlides(items) {
             group.items.push(item);
         groups.set(key, group);
     }
+    const roomNames = [...new Set([...groups.values()].map(group => group.consultorio))]
+        .sort((left, right) => left.localeCompare(right, "es-PE"));
+    const roomPositions = new Map(roomNames.map((room, index) => [room, index + 1]));
     const slides = [];
-    for (const group of groups.values()) {
+    const orderedGroups = [...groups.values()].sort((left, right) => left.consultorio.localeCompare(right.consultorio, "es-PE") ||
+        left.medico.localeCompare(right.medico, "es-PE"));
+    for (const group of orderedGroups) {
         const status = group.isCalling ? "llamando" : "proximo";
         const pageCount = Math.max(1, Math.ceil(group.items.length / maxVisibleRows));
         for (let page = 0; page < pageCount; page++) {
@@ -200,7 +205,11 @@ function buildAreaSlides(items) {
                 consultorio: group.consultorio,
                 medico: group.medico,
                 items: group.items.slice(index, index + maxVisibleRows),
-                status
+                status,
+                roomPosition: roomPositions.get(group.consultorio) ?? 1,
+                roomCount: roomNames.length,
+                pageIndex: page,
+                pageCount
             });
         }
     }
@@ -213,6 +222,7 @@ function renderAreaSlide(panelState) {
         panelState.status.hidden = true;
         panelState.panel.className = "board-panel area-panel area-panel--empty";
         panelState.counter.textContent = "—";
+        panelState.counter.setAttribute("aria-label", "Sin consultorios activos");
         panelState.list.replaceChildren();
         panelState.empty.hidden = false;
         return;
@@ -233,7 +243,8 @@ function renderAreaSlide(panelState) {
     panelState.status.className = `area-status area-status--${slide.status}`;
     panelState.status.hidden = false;
     panelState.panel.className = `board-panel area-panel area-panel--${slide.status}`;
-    panelState.counter.textContent = `${panelState.slideIndex + 1} / ${panelState.slides.length}`;
+    panelState.counter.textContent = `${slide.roomPosition} / ${slide.roomCount}`;
+    panelState.counter.setAttribute("aria-label", `Consultorio ${slide.roomPosition} de ${slide.roomCount}, página ${slide.pageIndex + 1} de ${slide.pageCount}`);
     panelState.list.replaceChildren(fragment);
     panelState.empty.hidden = true;
 }
@@ -246,7 +257,9 @@ function restartAreaRotation(panelState, items) {
             (slide.consultorio === activeCall.consultorio && slide.medico === activeCall.medico))
         : -1;
     const preservedSlideIndex = previousSlide
-        ? panelState.slides.findIndex(slide => slide.consultorio === previousSlide.consultorio && slide.medico === previousSlide.medico)
+        ? panelState.slides.findIndex(slide => slide.consultorio === previousSlide.consultorio &&
+            slide.medico === previousSlide.medico &&
+            slide.pageIndex === Math.min(previousSlide.pageIndex, slide.pageCount - 1))
         : -1;
     panelState.slideIndex = activeSlideIndex >= 0
         ? activeSlideIndex
@@ -327,13 +340,13 @@ function isInCurrentSession(item, now) {
 function restartAreaPanels(items) {
     const now = new Date();
     const visibleItems = items.filter(item => item.isActiveCall || (item.estado !== "en-atencion" && isInCurrentSession(item, now)));
-    const areaKeys = [...new Set(visibleItems.map(item => `${item.consultorio}\u001f${item.medico}`))]
+    const areaKeys = [...new Set(visibleItems.map(item => item.consultorio))]
         .sort((left, right) => left.localeCompare(right, "es-PE"));
     const splitIndex = Math.ceil(areaKeys.length / 2);
     const primaryKeys = new Set(areaKeys.slice(0, splitIndex));
     const secondaryKeys = new Set(areaKeys.slice(splitIndex));
-    restartAreaRotation(primaryAreaPanel, visibleItems.filter(item => primaryKeys.has(`${item.consultorio}\u001f${item.medico}`)));
-    restartAreaRotation(secondaryAreaPanel, visibleItems.filter(item => secondaryKeys.has(`${item.consultorio}\u001f${item.medico}`)));
+    restartAreaRotation(primaryAreaPanel, visibleItems.filter(item => primaryKeys.has(item.consultorio)));
+    restartAreaRotation(secondaryAreaPanel, visibleItems.filter(item => secondaryKeys.has(item.consultorio)));
 }
 function renderFreshness(generatedAt) {
     const generated = new Date(generatedAt);
